@@ -132,9 +132,16 @@ svg {
   letter-spacing: -1.4px;
   white-space: nowrap;
 }
-.wordmark i {
-  color: var(--gold);
-  font-size: 20px;
+.brand-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-home img {
+  display: block;
+  width: 39px;
+  height: auto;
+  border-radius: 5px;
 }
 .brand-sub {
   font:
@@ -504,6 +511,13 @@ svg {
   display: flex;
   justify-content: space-between;
   gap: 25px;
+}
+.footer-logo {
+  display: inline-block;
+}
+.footer-logo img {
+  display: block;
+  border-radius: 7px;
 }
 .footer p {
   font-size: 11px;
@@ -1023,6 +1037,12 @@ textarea {
   }
   .wordmark {
     font-size: 27px;
+  }
+  .brand-home {
+    gap: 8px;
+  }
+  .brand-home img {
+    width: 30px;
   }
   .brand-sub {
     font-size: 7px;

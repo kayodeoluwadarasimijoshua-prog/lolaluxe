@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Lola’s Luxe</title>
+  <rect width="64" height="64" rx="13" fill="#f8d9df"/>
+  <path d="M13 55V28a19 19 0 0 1 38 0v27" fill="none" stroke="#9a524b"
+        stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M26 19c1 4 3 4 6 7 3-4 6-5 10-5-1 5-5 9-7 13-2 6 0 12 4 15
+    2 2 4 2 6-1-1 7-10 7-14 3-4-4-5-9-3-14-2 3-5 7-6 12-2-5-1-10 3-15
+    4-5 3-9 1-15Z" fill="#7e3a43"/>
+</svg>
