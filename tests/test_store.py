@@ -584,3 +584,55 @@ def test_owner_password_reset_invalidates_existing_session(store):
         app.db().commit()
     assert c.get("/api/session").json["role"] is None
     assert c.get("/api/staff").status_code == 401
+
+
+def test_owner_setup_invitation(store):
+    from app import issue_owner_invitation
+
+    app, c, post, product, checkout, payment = store
+    token = issue_owner_invitation(app, "owner")
+    guest = app.test_client()
+
+    def activate(body):
+        return guest.post(
+            "/api/owner-invitation",
+            json=body,
+            headers={"X-CSRF-Token": guest.get("/api/session").json["csrf"]},
+        )
+
+    assert activate({"token": "made-up"}).status_code == 400
+    assert activate({"token": token}).json == {"username": "owner"}
+    assert activate({"token": token, "password": "short"}).status_code == 400
+    assert (
+        activate({"token": token, "password": "new-long-password"}).status_code == 200
+    )
+    assert c.get("/api/session").json["role"] is None
+    assert activate({"token": token}).status_code == 400
+    assert (
+        activate({"token": token, "password": "another-long-password"}).status_code
+        == 400
+    )
+
+
+def test_owner_invitation_expiry_replacement_and_account_change(store):
+    from app import issue_owner_invitation
+
+    app, c, post, product, checkout, payment = store
+    import pytest
+
+    with pytest.raises(ValueError):
+        issue_owner_invitation(app, "someoneelse")
+    first = issue_owner_invitation(app, "owner")
+    second = issue_owner_invitation(app, "owner")
+    assert post("owner-invitation", {"token": first}).status_code == 400
+    with app.app_context():
+        app.db().execute("UPDATE owner_invitation SET expires=?", ("2000-01-01",))
+        app.db().commit()
+    assert post("owner-invitation", {"token": second}).status_code == 400
+    third = issue_owner_invitation(app, "owner")
+    with app.app_context():
+        app.db().execute(
+            "UPDATE owner SET password=?", (generate_password_hash("changed-password"),)
+        )
+        app.db().commit()
+    assert post("owner-invitation", {"token": third}).status_code == 400

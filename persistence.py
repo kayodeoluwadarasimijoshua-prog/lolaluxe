@@ -66,7 +66,7 @@ class PostgresDatabase:
             sql = sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
         # Fully qualify table names: transaction poolers must not rely on SET search_path.
         sql = re.sub(
-            r"\b(FROM|JOIN|UPDATE|INTO|REFERENCES|TABLE IF NOT EXISTS)\s+(owner|staff|product_audit|categories|products|orders|payments|reservations|login_attempts)\b",
+            r"\b(FROM|JOIN|UPDATE|INTO|REFERENCES|TABLE IF NOT EXISTS)\s+(owner|owner_invitation|staff|product_audit|categories|products|orders|payments|reservations|login_attempts)\b",
             lambda m: m[1] + " " + self.schema + "." + m[2],
             sql,
             flags=re.I,
@@ -99,6 +99,7 @@ class PostgresDatabase:
                 self.execute(statement)
             for table in (
                 "owner",
+                "owner_invitation",
                 "staff",
                 "product_audit",
                 "categories",

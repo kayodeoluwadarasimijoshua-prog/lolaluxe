@@ -4,7 +4,7 @@ import sys, tempfile, threading, secrets
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app import create_app
+from app import create_app, issue_owner_invitation
 from werkzeug.security import generate_password_hash
 from werkzeug.serving import make_server
 from playwright.sync_api import sync_playwright, expect
@@ -13,12 +13,7 @@ root = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as data:
     app = create_app({"DATA_DIR": data, "TESTING": True})
     password = secrets.token_urlsafe(20)
-    with app.app_context():
-        app.db().execute(
-            "INSERT INTO owner VALUES(1,?,?)",
-            ("owner", generate_password_hash(password)),
-        )
-        app.db().commit()
+    token = issue_owner_invitation(app, "owner")
     server = make_server("127.0.0.1", 3002, app, threaded=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     with sync_playwright() as p:
@@ -28,7 +23,11 @@ with tempfile.TemporaryDirectory() as data:
         owner = browser.new_page(viewport={"width": 390, "height": 844})
         errors = []
         owner.on("pageerror", lambda e: errors.append(str(e)))
-        owner.goto("http://127.0.0.1:3002/admin")
+        owner.goto("http://127.0.0.1:3002/admin/owner-setup#" + token)
+        owner.get_by_label("New password", exact=True).fill(password)
+        owner.get_by_label("Confirm password").fill(password)
+        owner.get_by_role("button", name="Set up my account").click()
+        expect(owner.get_by_role("button", name="Sign in securely")).to_be_visible()
         owner.get_by_label("Username", exact=True).fill("owner")
         owner.get_by_label("Password", exact=True).fill(password)
         owner.get_by_role("button", name="Sign in securely").click()

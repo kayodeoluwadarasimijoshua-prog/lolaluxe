@@ -60,3 +60,16 @@ The existing owner login is the Super Admin; no public admin registration exists
 6. **Revoke access** immediately disables the account, including existing sessions. **New invitation / reset password** invalidates prior invitations and sessions and lets the helper choose a new password. **Invite again** restores a revoked helper through a new invitation.
 
 Keep invitation links private: anyone holding an unused link can activate that one Product Admin account. Customers cannot create an account or become admins without a valid Super Admin-issued invitation. The original Super Admin account is provisioned/reset by the website administrator using the existing owner CLI; it is never created through customer signup. Resetting the owner password now invalidates existing owner sessions.
+
+
+## Owner activates her account on her phone
+
+The website administrator generates a private owner setup link from a trusted terminal with `DATABASE_URL` securely set to the SAME production Neon database used by Vercel. Do not commit connection strings, paste them in chat, or put invitation links in public logs. The CLI refuses to generate a live invitation when DATABASE_URL is absent, preventing accidental creation in local SQLite.
+
+```bash
+python app.py owner-invite --username oluwadamilola --site-url https://lolaluxe.vercel.app
+```
+
+Use the existing owner username if an owner account already exists. The command creates/replaces a 24-hour invitation, without changing the owner's current password. Share the resulting private link directly with the owner. She opens it, sees her assigned username, chooses and confirms her own password, then signs in at `/admin`. She never needs database credentials, a terminal, GitHub or Vercel access. There is no public invitation-generation or owner signup endpoint.
+
+The link is single-use and stored only as a hash; creating a new invitation invalidates the previous link. Changing the owner account after issuance invalidates the invitation. Completing activation resets owner credentials and invalidates previous owner sessions. If the link expires, generate and privately share a new one. A page refresh removes the fragment token: reopen the original link if activation has not been completed. Use the actual connected custom domain as --site-url when ready.

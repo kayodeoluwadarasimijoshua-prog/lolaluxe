@@ -42,6 +42,48 @@ def integer(v, minimum=0, maximum=10**12):
     return v
 
 
+def owner_snapshot(database):
+    row = database.execute("SELECT username,password FROM owner WHERE id=1").fetchone()
+    return hashlib.sha256(
+        json.dumps([row["username"], row["password"]] if row else None).encode()
+    ).hexdigest()
+
+
+def issue_owner_invitation(app, username):
+    """Privileged provisioning only: never exposed as a public creation endpoint."""
+    username = str(username).strip().lower()
+    if not 3 <= len(username) <= 60 or not all(
+        c.isascii() and (c.isalnum() or c in "._-") for c in username
+    ):
+        raise ValueError("Use 3–60 letters, numbers, dots, underscores or hyphens.")
+    token = secrets.token_urlsafe(32)
+    with app.app_context():
+        database = app.db()
+        with database:
+            database.execute("BEGIN IMMEDIATE")
+            if database.execute(
+                "SELECT 1 FROM staff WHERE username=?", (username,)
+            ).fetchone():
+                raise ValueError("This username belongs to a staff account.")
+            current = database.execute(
+                "SELECT username FROM owner WHERE id=1"
+            ).fetchone()
+            if current and current["username"] != username:
+                raise ValueError(
+                    "An owner already exists. Use the existing owner username for recovery."
+                )
+            database.execute(
+                "INSERT INTO owner_invitation(id,username,token_hash,expires,snapshot) VALUES(1,?,?,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,token_hash=excluded.token_hash,expires=excluded.expires,snapshot=excluded.snapshot",
+                (
+                    username,
+                    hashlib.sha256(token.encode()).hexdigest(),
+                    (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+                    owner_snapshot(database),
+                ),
+            )
+    return token
+
+
 def create_app(config=None):
     app = Flask(__name__)
     vercel = os.getenv("VERCEL") == "1"
@@ -134,6 +176,7 @@ def create_app(config=None):
     with app.app_context():
         db().executescript(
             """
+        CREATE TABLE IF NOT EXISTS owner_invitation(id INTEGER PRIMARY KEY CHECK(id=1),username TEXT NOT NULL,token_hash TEXT NOT NULL,expires TEXT NOT NULL,snapshot TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS staff(id TEXT PRIMARY KEY,username TEXT UNIQUE NOT NULL,password TEXT,active INTEGER NOT NULL DEFAULT 1,version INTEGER NOT NULL DEFAULT 1,invite_hash TEXT,expires TEXT);
         CREATE TABLE IF NOT EXISTS product_audit(id TEXT PRIMARY KEY,product_id TEXT,actor TEXT,action TEXT,created TEXT);
         CREATE TABLE IF NOT EXISTS owner(id INTEGER PRIMARY KEY CHECK(id=1),username TEXT UNIQUE,password TEXT);
@@ -530,6 +573,48 @@ def create_app(config=None):
                     (secrets.token_hex(16), username, digest, expires),
                 )
         return jsonify(token=token)
+
+    @app.post("/api/owner-invitation")
+    def owner_activation():
+        b = request.get_json()
+        digest = hashlib.sha256(str(b.get("token", "")).encode()).hexdigest()
+        with db():
+            db().execute("BEGIN IMMEDIATE")
+            invitation = (
+                db()
+                .execute(
+                    "SELECT * FROM owner_invitation WHERE token_hash=? AND expires>?",
+                    (digest, now()),
+                )
+                .fetchone()
+            )
+            if not invitation or invitation["snapshot"] != owner_snapshot(db()):
+                return fail(
+                    "This setup link has expired or was already used. Ask your website administrator for a new one.",
+                    400,
+                )
+            if "password" not in b:
+                return jsonify(username=invitation["username"])
+            password = str(b["password"])
+            if not 12 <= len(password) <= 200:
+                raise ValueError("Choose a password of 12–200 characters.")
+            if (
+                db()
+                .execute(
+                    "SELECT 1 FROM staff WHERE username=?", (invitation["username"],)
+                )
+                .fetchone()
+            ):
+                return fail(
+                    "This username is no longer available. Ask for a new setup link."
+                )
+            db().execute(
+                "INSERT INTO owner(id,username,password) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,password=excluded.password",
+                (invitation["username"], generate_password_hash(password)),
+            )
+            db().execute("DELETE FROM owner_invitation WHERE id=1")
+        session.clear()
+        return jsonify(ok=True, username=invitation["username"])
 
     @app.post("/api/staff/activate")
     def staff_activate():
@@ -1152,8 +1237,34 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("command", nargs="?", default="run")
     parser.add_argument("--username", default="oluwadamilola")
+    parser.add_argument("--site-url", default="")
     args = parser.parse_args()
-    if args.command == "owner":
+    if args.command == "owner-invite":
+        if not app.config["DATABASE_URL"]:
+            raise SystemExit(
+                "Set DATABASE_URL securely to the production database before generating the live owner invitation."
+            )
+        from urllib.parse import urlparse
+
+        parsed = urlparse(args.site_url)
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+            or parsed.path not in ["", "/"]
+        ):
+            raise SystemExit(
+                "Supply the live HTTPS origin using --site-url, for example https://lolaluxe.vercel.app"
+            )
+        token = issue_owner_invitation(app, args.username)
+        print(
+            "Private owner setup link (expires in 24 hours; share only with the owner):"
+        )
+        print(args.site_url.rstrip("/") + "/admin/owner-setup#" + token)
+    elif args.command == "owner":
         password = getpass.getpass("New owner password (at least 12 characters): ")
         if len(password) < 12:
             raise SystemExit("Use at least 12 characters.")

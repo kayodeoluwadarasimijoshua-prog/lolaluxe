@@ -463,6 +463,30 @@ function bindTeam() {
   $$("[data-staff-reset]").forEach(b => b.onclick = () => invitation({action:"reset", id:b.dataset.staffReset}, b));
   $$("[data-staff-revoke]").forEach(b => b.onclick = async () => { b.disabled = true; try { await api("staff", {action:"revoke", id:b.dataset.staffRevoke}); await render(); toast("Access revoked."); } catch (err) { toast(err.message); b.disabled = false; } });
 }
+async function ownerSetupView() {
+  const token = location.hash.slice(1);
+  history.replaceState({}, "", "/admin/owner-setup");
+  const base = `<h1>Welcome to your boutique</h1><p>Set your private Super Admin password to manage your products, orders and team.</p>`;
+  try {
+    const info = await api("owner-invitation", {token});
+    $("#app").innerHTML = shell(`<form class="login panel" id="owner-setup">${base}<p>Your username: <strong>${esc(info.username)}</strong></p><p>Save your username and password somewhere private.</p><div id="owner-setup-error" role="alert"></div><label class="field">New password<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><label class="field">Confirm password<input name="confirm" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="btn">Set up my account</button></form>`);
+    $("#owner-setup").onsubmit = async e => {
+      e.preventDefault(); const button = e.submitter; button.disabled = true;
+      const values = Object.fromEntries(new FormData(e.target));
+      try {
+        if (values.password !== values.confirm) throw Error("Passwords do not match.");
+        await api("owner-invitation", {token, password:values.password});
+        state.session = await api("session");
+        history.pushState({}, "", "/admin");
+        await render();
+        $("#login input[name=username]").value = info.username;
+        toast("Your account is ready. Sign in with your new password.");
+      } catch (err) { $("#owner-setup-error").textContent = err.message; } finally { button.disabled = false; }
+    };
+  } catch (err) {
+    $("#app").innerHTML = shell(`<section class="login panel"><h1>Setup link unavailable</h1><p>${esc(err.message)}</p><a data-link class="btn" href="/admin">Go to sign in</a></section>`);
+  }
+}
 function activationView() {
   const token = location.hash.slice(1);
   history.replaceState({}, "", "/admin/activate");
@@ -856,6 +880,7 @@ async function render() {
   let p = path();
   try {
     if (p.startsWith("/admin")) {
+      if (p === "/admin/owner-setup") { await ownerSetupView(); return; }
       if (p === "/admin/activate") { activationView(); return; }
       state.session = await api("session");
       if (!state.session.owner) {
