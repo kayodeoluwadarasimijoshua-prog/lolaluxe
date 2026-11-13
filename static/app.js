@@ -442,13 +442,46 @@ function handoff() {
   );
 }
 function adminTabs(tab) {
-  return `<nav class="admin-tabs"><a data-link href="/admin" class="${tab === "dashboard" ? "active" : ""}">Overview</a><a data-link href="/admin/products" class="${tab === "products" ? "active" : ""}">Products</a><a data-link href="/admin/orders" class="${tab === "orders" ? "active" : ""}">Orders</a><button id="logout" class="text-btn">Sign out</button></nav>`;
+  const links = state.session.role === "superadmin" ? [["dashboard", "/admin", "Overview"], ["products", "/admin/products", "Products"], ["orders", "/admin/orders", "Orders"], ["team", "/admin/team", "Team"]] : [["products", "/admin/products", "Products"]];
+  return `<nav class="admin-tabs">${links.map(([key, url, label]) => `<a data-link href="${url}" class="${tab === key ? "active" : ""}">${label}</a>`).join("")}<button id="logout" class="text-btn">Sign out</button></nav>`;
+}
+function teamView(members, activity) {
+  return adminShell(`<section class="panel"><h2>Your team</h2><p>You are the Super Admin. Product Admins can upload photos and save drafts. Only you can publish products and access orders or finances.</p><form id="invite-staff"><label class="field">Product Admin username<input name="username" required minlength="3" maxlength="60" pattern="[A-Za-z0-9._-]+" autocomplete="off"></label><button class="btn">Create invitation</button></form><div id="invite-result" role="status"></div></section><section class="panel"><h2>Product Admins</h2>${members.length ? members.map(m => `<div class="panel"><strong>${esc(m.username)}</strong><p>${m.active ? esc(m.status) : "Access revoked"}</p><button class="text-btn" data-staff-reset="${esc(m.id)}">${m.active ? "New invitation / reset password" : "Invite again"}</button>${m.active ? `<button class="text-btn" data-staff-revoke="${esc(m.id)}">Revoke access</button>` : ""}</div>`).join("") : "<p>No helpers invited yet.</p>"}</section><section class="panel"><h2>Recent product activity</h2>${activity.length ? activity.map(a => `<p><strong>${esc(a.actor)}</strong> · ${esc(a.action)} · ${esc(a.product_name || "Removed product")}<br><span class="tiny">${esc(new Date(a.created).toLocaleString())}</span></p>`).join("") : "<p>Product changes will appear here.</p>"}</section>`, "team");
+}
+function bindTeam() {
+  const invitation = async (body, button) => {
+    button.disabled = true;
+    try {
+      const result = await api("staff", body);
+      await render();
+      const url = location.origin + "/admin/activate#" + result.token;
+      $("#invite-result").innerHTML = `<div class="note"><p>Share this private, single-use link with your helper. It expires in 24 hours. Their username is shown in the team list below.</p><label class="field">Invitation link<input readonly id="invite-link" value="${esc(url)}"></label><button class="text-btn" id="copy-invite">Copy invitation link</button></div>`;
+      $("#copy-invite").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Invitation link copied."); } catch { $("#invite-link").select(); toast("Copy the selected link."); } };
+    } catch (err) { toast(err.message); } finally { button.disabled = false; }
+  };
+  $("#invite-staff").onsubmit = e => { e.preventDefault(); invitation({username: new FormData(e.target).get("username")}, e.submitter); };
+  $$("[data-staff-reset]").forEach(b => b.onclick = () => invitation({action:"reset", id:b.dataset.staffReset}, b));
+  $$("[data-staff-revoke]").forEach(b => b.onclick = async () => { b.disabled = true; try { await api("staff", {action:"revoke", id:b.dataset.staffRevoke}); await render(); toast("Access revoked."); } catch (err) { toast(err.message); b.disabled = false; } });
+}
+function activationView() {
+  const token = location.hash.slice(1);
+  history.replaceState({}, "", "/admin/activate");
+  $("#app").innerHTML = shell(`<form class="login panel" id="activate-staff"><h1>Join the boutique team</h1><p>Your invitation gives you Product Admin access. Choose your own password, then sign in with the username your Super Admin assigned.</p><div id="activation-error" role="alert"></div><label class="field">New password<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><label class="field">Confirm password<input name="confirm" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="btn">Activate account</button></form>`);
+  $("#activate-staff").onsubmit = async e => {
+    e.preventDefault(); const b = e.submitter; b.disabled = true;
+    const data = Object.fromEntries(new FormData(e.target));
+    try {
+      if (data.password !== data.confirm) throw Error("Passwords do not match.");
+      await api("staff/activate", {token, password:data.password});
+      go("/admin"); toast("Account activated. Sign in with your assigned username.");
+    } catch(err) { $("#activation-error").textContent = err.message; } finally { b.disabled = false; }
+  };
 }
 function adminShell(body, tab) {
   return shell(
     heading(
       "Your boutique, at a glance.",
-      "A personal space for Oluwadamilola.",
+      `${state.session.role === "superadmin" ? "Super Admin" : "Product Admin"} · ${esc(state.session.owner)}`,
     ) +
       adminTabs(tab) +
       body,
@@ -457,7 +490,7 @@ function adminShell(body, tab) {
 }
 function login() {
   return shell(
-    `<form class="login panel" id="login"><span class="eyebrow">THE OWNER’S CORNER</span><h1>Welcome back.</h1><p class="muted">Sign in to care for your boutique.</p><div id="login-error"></div><label class="field">Username<input name="username" autocomplete="username" required></label><label class="field">Password<input type="password" name="password" autocomplete="current-password" required></label><button class="btn full">Sign in securely ${icon("arrow")}</button><p class="tiny">Private access for Oluwadamilola. Forgotten your password? Use the owner reset command on your host.</p></form>`,
+    `<form class="login panel" id="login"><span class="eyebrow">PRIVATE TEAM ACCESS</span><h1>Welcome back.</h1><p class="muted">Sign in to care for your boutique.</p><div id="login-error"></div><label class="field">Username<input name="username" autocomplete="username" required></label><label class="field">Password<input type="password" name="password" autocomplete="current-password" required></label><button class="btn full">Sign in securely ${icon("arrow")}</button><p class="tiny">Invitation-only access. Product Admins: ask your Super Admin for a password reset link. Store owner: contact your website administrator for account recovery.</p></form>`,
     "admin",
   );
 }
@@ -540,6 +573,9 @@ function variantRow(v = {}) {
   return `<div class="variant-row" data-id="${esc(v.id || "")}"><input aria-label="Size" placeholder="Size / One size" value="${esc(v.size || "")}"><input aria-label="Colour" placeholder="Colour" value="${esc(v.colour || "")}"><input aria-label="Stock" type="number" min="0" max="100000" value="${v.stock || 0}"><button class="icon-btn remove-variant" type="button" aria-label="Remove combination">${icon("trash")}</button></div>`;
 }
 function productForm(p) {
+  if (state.session.role === "product_admin" && p?.published) {
+    return adminShell(`<section class="panel"><h2>${esc(p.name)}</h2><p>This product is live. Ask your Super Admin to make changes to published products.</p><a data-link class="btn" href="/admin/products">Back to products</a></section>`, "products");
+  }
   editingProduct = p || {
     name: "",
     price: 0,
@@ -551,7 +587,7 @@ function productForm(p) {
   };
   let x = editingProduct;
   return adminShell(
-    `<form class="admin-form panel" id="product-form"><h2>${p ? "Edit your piece" : "A new favourite"}</h2>${p?.sample ? '<p class="note">This is a preview sample. Create a new product for your live catalogue.</p>' : ""}<div id="form-error"></div><label class="field">Product name<input name="name" required maxlength="150" value="${esc(x.name)}"></label><div class="form-grid"><label class="field">Category<select name="category" aria-label="Category">${state.categories.map((c) => `<option ${c === x.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label><label class="field">Price (₦)<input name="price" type="number" step="0.01" min="0.01" required value="${x.price / 100 || ""}"></label></div><label class="field">Description<textarea name="description" maxlength="5000">${esc(x.description)}</textarea></label><label class="field">Photos (up to 8)<input id="upload" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><p class="tiny">Photos are optimized and stored for your catalogue.</p><div id="photos" class="photo-list">${photosView()}</div><div class="spacer"></div><h3>Size & colour combinations</h3><p class="tiny">Stock applies to each exact combination. Set stock to 0 for sold out. Existing reservations reduce available stock.</p><div class="variant-row tiny"><span>Size</span><span>Colour</span><span>Stock</span><span></span></div><div id="variants">${x.variants.map(variantRow).join("")}</div><button class="text-btn" id="add-variant" type="button">+ Add combination</button><label class="check"><input type="checkbox" name="published" ${x.published ? "checked" : ""}> Publish in the boutique</label><button class="btn" id="save-product">Save product</button> <a data-link href="/admin/products" class="text-btn">Back to products</a></form>`,
+    `<form class="admin-form panel" id="product-form"><h2>${p ? "Edit your piece" : "A new favourite"}</h2>${p?.sample ? '<p class="note">This is a preview sample. Create a new product for your live catalogue.</p>' : ""}<div id="form-error"></div><label class="field">Product name<input name="name" required maxlength="150" value="${esc(x.name)}"></label><div class="form-grid"><label class="field">Category<select name="category" aria-label="Category">${state.categories.map((c) => `<option ${c === x.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label><label class="field">Price (₦)<input name="price" type="number" step="0.01" min="0.01" required value="${x.price / 100 || ""}"></label></div><label class="field">Description<textarea name="description" maxlength="5000">${esc(x.description)}</textarea></label><label class="field">Photos (up to 8)<input id="upload" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><p class="tiny">Photos are optimized and stored for your catalogue.</p><div id="photos" class="photo-list">${photosView()}</div><div class="spacer"></div><h3>Size & colour combinations</h3><p class="tiny">Stock applies to each exact combination. Set stock to 0 for sold out. Existing reservations reduce available stock.</p><div class="variant-row tiny"><span>Size</span><span>Colour</span><span>Stock</span><span></span></div><div id="variants">${x.variants.map(variantRow).join("")}</div><button class="text-btn" id="add-variant" type="button">+ Add combination</button>${state.session.role === "superadmin" ? `<label class="check"><input type="checkbox" name="published" ${x.published ? "checked" : ""}> Publish in the boutique</label>` : `<p class="note">Saved as a draft for your Super Admin to review and publish. Live products can only be edited by the Super Admin.</p>`}<button class="btn" id="save-product">Save product</button> <a data-link href="/admin/products" class="text-btn">Back to products</a></form>`,
     "products",
   );
 }
@@ -820,13 +856,19 @@ async function render() {
   let p = path();
   try {
     if (p.startsWith("/admin")) {
+      if (p === "/admin/activate") { activationView(); return; }
+      state.session = await api("session");
       if (!state.session.owner) {
         $("#app").innerHTML = login();
         bindLogin();
         return;
       }
+      if (state.session.role === "product_admin" && !p.startsWith("/admin/products")) { go("/admin/products"); return; }
       let body;
-      if (p === "/admin") {
+      if (p === "/admin/team") {
+        const [members, activity] = await Promise.all([api("staff"), api("product-activity")]);
+        body = teamView(members, activity);
+      } else if (p === "/admin") {
         let d = await api("dashboard" + location.search);
         if (version !== renderVersion) return;
         body = dashboard(d);
@@ -855,6 +897,7 @@ async function render() {
         state.session = await api("session");
         go("/admin");
       };
+      if ($("#invite-staff")) bindTeam();
       if ($("#date-filter"))
         $("#date-filter").onsubmit = (e) => {
           e.preventDefault();

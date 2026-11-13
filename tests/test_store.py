@@ -457,3 +457,130 @@ def test_actual_receipts_retained_but_stock_conflicts_are_flagged(store):
     assert received["status"] == "Paid" and received["inventory_conflicts"]
     assert payment(a, 1200000).json["inventory_conflicts"]
     assert all(o["inventory_conflicts"] for o in c.get("/api/orders").json)
+
+
+def test_invitation_roles_and_revocation(store):
+    app, c, post, product, checkout, payment = store
+    guest = app.test_client()
+
+    def send(client, endpoint, body):
+        return client.post(
+            "/api/" + endpoint,
+            json=body,
+            headers={"X-CSRF-Token": client.get("/api/session").json["csrf"]},
+        )
+
+    assert send(guest, "staff", {"username": "intruder"}).status_code == 401
+    assert (
+        send(
+            guest,
+            "staff/activate",
+            {"token": "invented", "password": "long-test-password"},
+        ).status_code
+        == 400
+    )
+    token = post("staff", {"username": "helper", "role": "superadmin"}).json["token"]
+    assert (
+        send(guest, "staff/activate", {"token": token, "password": "short"}).status_code
+        == 400
+    )
+    assert (
+        send(
+            guest, "staff/activate", {"token": token, "password": "long-test-password"}
+        ).status_code
+        == 200
+    )
+    assert (
+        send(
+            guest, "staff/activate", {"token": token, "password": "long-test-password"}
+        ).status_code
+        == 400
+    )
+    assert (
+        send(
+            guest, "login", {"username": "helper", "password": "long-test-password"}
+        ).status_code
+        == 200
+    )
+    assert guest.get("/api/session").json["role"] == "product_admin"
+    for endpoint in ["staff", "orders", "dashboard", "product-activity"]:
+        assert guest.get("/api/" + endpoint).status_code == 403
+    assert send(guest, "staff", {"username": "another"}).status_code == 403
+    ref = checkout().json["reference"]
+    for endpoint in ["agreement", "payments", "dismiss", "reserve"]:
+        assert send(guest, "orders/" + ref + "/" + endpoint, {}).status_code == 403
+    assert send(guest, "products", product).status_code == 403
+    assert send(guest, "products", dict(product, published=False)).status_code == 403
+    draft = dict(product, id="staff-draft", published=False)
+    assert send(guest, "products", draft).status_code == 200
+    assert "staff-draft" not in [p["id"] for p in c.get("/api/products").json]
+    assert c.get("/api/product-activity").json[0]["actor"] == "helper"
+    assert post("products", dict(draft, published=True)).status_code == 200
+    assert send(guest, "products", draft).status_code == 403
+    member = c.get("/api/staff").json[0]
+    assert "password" not in member and "invite_hash" not in member
+    assert post("staff", {"action": "revoke", "id": member["id"]}).status_code == 200
+    assert guest.get("/api/session").json["role"] is None
+    assert send(guest, "products", draft).status_code == 401
+    assert (
+        send(
+            guest, "login", {"username": "helper", "password": "long-test-password"}
+        ).status_code
+        == 401
+    )
+    reset = post("staff", {"action": "reset", "id": member["id"]}).json["token"]
+    assert (
+        send(
+            guest,
+            "staff/activate",
+            {"token": reset, "password": "new-long-test-password"},
+        ).status_code
+        == 200
+    )
+    assert (
+        send(
+            guest, "login", {"username": "helper", "password": "new-long-test-password"}
+        ).status_code
+        == 200
+    )
+    assert guest.get("/api/session").json["role"] == "product_admin"
+
+
+def test_expired_and_replaced_staff_invites(store):
+    app, c, post, product, checkout, payment = store
+    first = post("staff", {"username": "helper"}).json["token"]
+    member = c.get("/api/staff").json[0]
+    second = post("staff", {"action": "reset", "id": member["id"]}).json["token"]
+    assert (
+        post(
+            "staff/activate", {"token": first, "password": "test-long-password"}
+        ).status_code
+        == 400
+    )
+    with app.app_context():
+        app.db().execute(
+            "UPDATE staff SET expires=? WHERE id=?",
+            ("2000-01-01T00:00:00+00:00", member["id"]),
+        )
+        app.db().commit()
+    assert (
+        post(
+            "staff/activate", {"token": second, "password": "test-long-password"}
+        ).status_code
+        == 400
+    )
+    assert post("staff", {"username": "owner"}).status_code == 400
+    assert post("staff", {"username": "helper"}).status_code == 400
+
+
+def test_owner_password_reset_invalidates_existing_session(store):
+    app, c, post, product, checkout, payment = store
+    assert c.get("/api/session").json["role"] == "superadmin"
+    with app.app_context():
+        app.db().execute(
+            "UPDATE owner SET password=? WHERE id=1",
+            (generate_password_hash("replacement-password"),),
+        )
+        app.db().commit()
+    assert c.get("/api/session").json["role"] is None
+    assert c.get("/api/staff").status_code == 401

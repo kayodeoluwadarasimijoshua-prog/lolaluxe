@@ -134,6 +134,8 @@ def create_app(config=None):
     with app.app_context():
         db().executescript(
             """
+        CREATE TABLE IF NOT EXISTS staff(id TEXT PRIMARY KEY,username TEXT UNIQUE NOT NULL,password TEXT,active INTEGER NOT NULL DEFAULT 1,version INTEGER NOT NULL DEFAULT 1,invite_hash TEXT,expires TEXT);
+        CREATE TABLE IF NOT EXISTS product_audit(id TEXT PRIMARY KEY,product_id TEXT,actor TEXT,action TEXT,created TEXT);
         CREATE TABLE IF NOT EXISTS owner(id INTEGER PRIMARY KEY CHECK(id=1),username TEXT UNIQUE,password TEXT);
         CREATE TABLE IF NOT EXISTS categories(name TEXT PRIMARY KEY);
         CREATE TABLE IF NOT EXISTS products(id TEXT PRIMARY KEY,name TEXT NOT NULL,category TEXT NOT NULL,price INTEGER NOT NULL CHECK(price>=0),description TEXT,images TEXT,variants TEXT,published INTEGER NOT NULL,sample INTEGER DEFAULT 0);
@@ -171,14 +173,54 @@ def create_app(config=None):
             )
         db().commit()
 
-    def owner(fn):
-        @wraps(fn)
-        def inner(*a, **kw):
-            if not session.get("owner"):
-                return fail("Owner sign-in required.", 401)
-            return fn(*a, **kw)
+    def identity():
+        if session.get("staff_id"):
+            row = (
+                db()
+                .execute("SELECT * FROM staff WHERE id=?", (session["staff_id"],))
+                .fetchone()
+            )
+            if (
+                row
+                and row["active"]
+                and row["password"]
+                and row["version"] == session.get("staff_version")
+            ):
+                return row["username"], "product_admin"
+            return None, None
+        username = session.get("owner")
+        row = (
+            db()
+            .execute("SELECT password FROM owner WHERE username=?", (username,))
+            .fetchone()
+            if username
+            else None
+        )
+        if (
+            row
+            and session.get("owner_version")
+            == hashlib.sha256(row["password"].encode()).hexdigest()
+        ):
+            return username, "superadmin"
+        return None, None
 
-        return inner
+    def access(superadmin=False):
+        def decorate(fn):
+            @wraps(fn)
+            def inner(*a, **kw):
+                username, role = identity()
+                if not role:
+                    return fail("Admin sign-in required.", 401)
+                if superadmin and role != "superadmin":
+                    return fail("Super Admin access required.", 403)
+                return fn(*a, **kw)
+
+            return inner
+
+        return decorate
+
+    owner = access(superadmin=True)
+    product_admin = access()
 
     @app.before_request
     def security():
@@ -355,7 +397,8 @@ def create_app(config=None):
             session["csrf"] = secrets.token_hex(24)
         return jsonify(
             csrf=session["csrf"],
-            owner=session.get("owner"),
+            owner=identity()[0],
+            role=identity()[1],
             preview=app.config["PREVIEW"],
         )
 
@@ -374,10 +417,26 @@ def create_app(config=None):
             >= 8
         ):
             return fail("Too many attempts. Try again in 15 minutes.", 429)
-        row = db().execute("SELECT * FROM owner WHERE id=1").fetchone()
+        row = (
+            db()
+            .execute("SELECT * FROM owner WHERE username=?", (body.get("username"),))
+            .fetchone()
+        )
+        staff_row = None
+        if not row:
+            staff_row = (
+                db()
+                .execute(
+                    "SELECT * FROM staff WHERE username=? AND active=1",
+                    (body.get("username"),),
+                )
+                .fetchone()
+            )
+            row = staff_row
         if (
             not row
             or body.get("username") != row["username"]
+            or not row["password"]
             or not check_password_hash(row["password"], str(body.get("password", "")))
         ):
             db().execute("INSERT INTO login_attempts VALUES(?,?)", (ip, now()))
@@ -385,6 +444,13 @@ def create_app(config=None):
             return fail("Sign-in details are incorrect.", 401)
         session.clear()
         session["owner"] = row["username"]
+        if not staff_row:
+            session["owner_version"] = hashlib.sha256(
+                row["password"].encode()
+            ).hexdigest()
+        if staff_row:
+            session["staff_id"] = row["id"]
+            session["staff_version"] = row["version"]
         session["csrf"] = secrets.token_hex(24)
         session.permanent = True
         return jsonify(ok=True, csrf=session["csrf"])
@@ -394,9 +460,120 @@ def create_app(config=None):
         session.clear()
         return jsonify(ok=True)
 
+    @app.get("/api/staff")
+    @owner
+    def staff_list():
+        rows = db().execute(
+            "SELECT id,username,active,password FROM staff ORDER BY username"
+        )
+        return jsonify(
+            [
+                {
+                    "id": r["id"],
+                    "username": r["username"],
+                    "active": bool(r["active"]),
+                    "status": "Active" if r["password"] else "Invitation pending",
+                }
+                for r in rows
+            ]
+        )
+
+    @app.post("/api/staff")
+    @owner
+    def staff_manage():
+        b = request.get_json()
+        action = b.get("action", "invite")
+        with db():
+            db().execute("BEGIN IMMEDIATE")
+            if action == "revoke":
+                db().execute(
+                    "UPDATE staff SET active=0,version=version+1,invite_hash=NULL WHERE id=?",
+                    (b.get("id"),),
+                )
+                return jsonify(ok=True)
+            if action not in ["invite", "reset"]:
+                raise ValueError("Choose a valid staff action.")
+            token = secrets.token_urlsafe(32)
+            digest = hashlib.sha256(token.encode()).hexdigest()
+            expires = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+            if action == "reset":
+                row = (
+                    db()
+                    .execute("SELECT id FROM staff WHERE id=?", (b.get("id"),))
+                    .fetchone()
+                )
+                if not row:
+                    return fail("Staff member not found.", 404)
+                db().execute(
+                    "UPDATE staff SET password=NULL,active=1,version=version+1,invite_hash=?,expires=? WHERE id=?",
+                    (digest, expires, row["id"]),
+                )
+            else:
+                username = str(b.get("username", "")).strip().lower()
+                if not 3 <= len(username) <= 60 or not all(
+                    c.isascii() and (c.isalnum() or c in "._-") for c in username
+                ):
+                    raise ValueError(
+                        "Use 3–60 letters, numbers, dots, underscores or hyphens."
+                    )
+                if (
+                    db()
+                    .execute("SELECT 1 FROM owner WHERE lower(username)=?", (username,))
+                    .fetchone()
+                    or db()
+                    .execute("SELECT 1 FROM staff WHERE username=?", (username,))
+                    .fetchone()
+                ):
+                    raise ValueError("That username is already in use.")
+                db().execute(
+                    "INSERT INTO staff(id,username,invite_hash,expires) VALUES(?,?,?,?)",
+                    (secrets.token_hex(16), username, digest, expires),
+                )
+        return jsonify(token=token)
+
+    @app.post("/api/staff/activate")
+    def staff_activate():
+        b = request.get_json()
+        password = str(b.get("password", ""))
+        if not 12 <= len(password) <= 200:
+            raise ValueError("Choose a password of 12–200 characters.")
+        digest = hashlib.sha256(str(b.get("token", "")).encode()).hexdigest()
+        with db():
+            db().execute("BEGIN IMMEDIATE")
+            row = (
+                db()
+                .execute(
+                    "SELECT id FROM staff WHERE invite_hash=? AND active=1 AND expires>?",
+                    (digest, now()),
+                )
+                .fetchone()
+            )
+            if not row:
+                return fail(
+                    "This invitation has expired or was already used. Ask the Super Admin for a new one.",
+                    400,
+                )
+            db().execute(
+                "UPDATE staff SET password=?,invite_hash=NULL,expires=NULL WHERE id=?",
+                (generate_password_hash(password), row["id"]),
+            )
+        return jsonify(ok=True)
+
+    @app.get("/api/product-activity")
+    @owner
+    def product_activity():
+        return jsonify(
+            [
+                dict(r)
+                for r in db().execute(
+                    "SELECT a.*,p.name AS product_name FROM product_audit a LEFT JOIN products p ON p.id=a.product_id ORDER BY a.created DESC LIMIT 100"
+                )
+            ]
+        )
+
     @app.get("/api/products")
     def products():
-        admin = request.args.get("admin") == "1" and session.get("owner")
+        admin = request.args.get("admin") == "1" and identity()[1]
         rows = db().execute(
             "SELECT * FROM products"
             + (
@@ -416,7 +593,7 @@ def create_app(config=None):
         )
 
     @app.post("/api/categories")
-    @owner
+    @product_admin
     def category():
         name = str(request.get_json().get("name", "")).strip()
         if not 1 <= len(name) <= 40:
@@ -426,7 +603,7 @@ def create_app(config=None):
         return jsonify(ok=True)
 
     @app.post("/api/products")
-    @owner
+    @product_admin
     def save_product():
         b = request.get_json()
         pid = b.get("id") or secrets.token_hex(8)
@@ -474,6 +651,17 @@ def create_app(config=None):
             raise ValueError("Upload 1–8 product photos.")
         with db():
             db().execute("BEGIN IMMEDIATE")
+            if identity()[1] == "product_admin":
+                existing = (
+                    db()
+                    .execute("SELECT published FROM products WHERE id=?", (pid,))
+                    .fetchone()
+                )
+                if b.get("published") or (existing and existing["published"]):
+                    return fail(
+                        "Product Admins can save drafts only. Ask the Super Admin to edit or publish live products.",
+                        403,
+                    )
             old_row = (
                 db()
                 .execute("SELECT variants FROM products WHERE id=?", (pid,))
@@ -516,10 +704,20 @@ def create_app(config=None):
                     int(bool(b.get("published"))),
                 ),
             )
+            db().execute(
+                "INSERT INTO product_audit VALUES(?,?,?,?,?)",
+                (
+                    secrets.token_hex(16),
+                    pid,
+                    identity()[0],
+                    "Published" if b.get("published") else "Saved draft",
+                    now(),
+                ),
+            )
         return jsonify(id=pid)
 
     @app.post("/api/upload")
-    @owner
+    @product_admin
     def upload():
         f = request.files.get("photo")
         if not f:

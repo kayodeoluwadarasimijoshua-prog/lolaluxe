@@ -46,3 +46,17 @@ To close a part-paid request, review its history, type its full reference and ad
 Sign out on shared devices. Password resets use the host's `app.py owner` command, so keep your hosting account secure. The dashboard and order book are private; do not share your credentials with customers.
 
 If an order shows a delivery excess or stock-conflict warning, review it before fulfilment. An unconfirmed payment draft can be restored after a network error; check history before retrying. Retries keep the same submission reference.
+
+
+## Super Admin and Product Admin accounts
+
+The existing owner login is the Super Admin; no public admin registration exists. After this update, sign in again at `/admin` with the existing owner credentials.
+
+1. Open **Team** and enter a helper's username (letters, numbers, dots, underscores or hyphens).
+2. Select **Create invitation**. Copy the private link and share it directly with that helper, together with their username. The app does not email invitations.
+3. The helper opens the link within 24 hours and chooses a password of at least 12 characters. The link can only be used once.
+4. They sign in at `/admin`. Product Admins can upload photos, add categories and create/edit drafts. They cannot publish, modify live products, access orders or finances, or manage accounts.
+5. The Super Admin reviews drafts in **Products**, checks **Publish in the boutique**, and saves. Recent product actions appear on **Team**.
+6. **Revoke access** immediately disables the account, including existing sessions. **New invitation / reset password** invalidates prior invitations and sessions and lets the helper choose a new password. **Invite again** restores a revoked helper through a new invitation.
+
+Keep invitation links private: anyone holding an unused link can activate that one Product Admin account. Customers cannot create an account or become admins without a valid Super Admin-issued invitation. The original Super Admin account is provisioned/reset by the website administrator using the existing owner CLI; it is never created through customer signup. Resetting the owner password now invalidates existing owner sessions.
