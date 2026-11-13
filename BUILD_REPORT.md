@@ -1,5 +1,9 @@
 # Build report
 
+## Storefront and audit update
+
+The requested GPT-6 Astra audit is complete, with corrective fixes and **40 passing server tests** plus phone/browser acceptance checks. Public owner links were removed and a high-resolution, AI-edited editorial hero replaced the blurred model image. See [AUDIT.md](AUDIT.md) for resolved findings and remaining launch limitations.
+
 ## Neon and Cloudinary update
 
 The recommended deployment now uses **Vercel + Neon PostgreSQL + Cloudinary photos**. Cloudinary uses authenticated server-side signed uploads, validates returned image URLs against the configured cloud/folder, keeps credentials out of browser responses and uses the same existing photo optimization path. Supabase remains an optional alternative. Neon works through the existing PostgreSQL adapter; no database logic rewrite is needed.

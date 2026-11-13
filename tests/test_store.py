@@ -374,3 +374,86 @@ def test_simultaneous_checkout_and_payment_retries(store):
         )
     assert len(results[0]["payments"]) == len(results[1]["payments"]) == 1
     assert c.get("/api/dashboard").json["product_sales"] == 1200000
+
+
+def test_option_edits_require_shopper_review_and_old_reservation_is_clear(store):
+    app, c, post, p, checkout, payment = store
+    ref = checkout().json["reference"]
+    p["variants"][0]["size"] = "40"
+    p["variants"][0]["colour"] = "Green"
+    assert post("products", p).status_code == 200
+    current = c.get("/api/products").json[0]
+    assert current["variants"][0]["id"] != "brown38"
+    assert checkout().status_code == 409
+    response = post(
+        f"orders/{ref}/reserve",
+        {"product_id": p["id"], "variant_id": "brown38", "qty": 1},
+    )
+    assert (
+        response.status_code == 409 and "original size/colour" in response.json["error"]
+    )
+    assert (
+        post(
+            f"orders/{ref}/reserve",
+            {"product_id": p["id"], "variant_id": "brown38", "qty": 0},
+        ).status_code
+        == 200
+    )
+
+
+def test_delivery_excess_requires_note_and_stays_visible(store):
+    app, c, post, p, checkout, payment = store
+    ref = checkout().json["reference"]
+    post(f"orders/{ref}/agreement", {"delivery_fee": 250000})
+    assert payment(ref, 1200000, 350000, note="").status_code == 400
+    response = payment(
+        ref,
+        1200000,
+        350000,
+        note="Verified extra delivery receipt; review with customer",
+    )
+    assert response.status_code == 200
+    assert response.json["delivery_excess"] == 100000
+    assert response.json["paid_delivery"] == 350000
+    assert c.get("/api/dashboard").json["product_sales"] == 1200000
+
+
+def test_correcting_a_paid_entry_needs_reason_without_spurious_exception(store):
+    app, c, post, p, checkout, payment = store
+    ref = checkout().json["reference"]
+    original = payment(ref, 1200000, note="").json["payments"][0]["id"]
+    response = payment(
+        ref,
+        800000,
+        corrects=original,
+        reason="Correct amount from bank statement",
+        note="",
+    )
+    assert response.status_code == 200
+    assert response.json["balance"] == 400000
+    assert response.json["payment_count"] == 1
+
+
+def test_retry_key_cannot_silently_change_received_amount(store):
+    app, c, post, p, checkout, payment = store
+    ref = checkout().json["reference"]
+    key = str(uuid.uuid4())
+    assert payment(ref, 400000, key=key).status_code == 200
+    assert payment(ref, 800000, key=key).status_code == 409
+    assert c.get("/api/orders").json[0]["paid_products"] == 400000
+
+
+def test_actual_receipts_retained_but_stock_conflicts_are_flagged(store):
+    app, c, post, p, checkout, payment = store
+    p["variants"][0]["stock"] = 1
+    assert post("products", p).status_code == 200
+    a = checkout().json["reference"]
+    b = checkout().json["reference"]
+    post(
+        f"orders/{a}/reserve",
+        {"product_id": p["id"], "variant_id": "brown38", "qty": 1},
+    )
+    received = payment(b, 1200000).json
+    assert received["status"] == "Paid" and received["inventory_conflicts"]
+    assert payment(a, 1200000).json["inventory_conflicts"]
+    assert all(o["inventory_conflicts"] for o in c.get("/api/orders").json)

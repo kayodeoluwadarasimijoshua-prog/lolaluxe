@@ -1450,3 +1450,7 @@ textarea {
     font-size: 26px;
   }
 }
+/* Keep the restored portrait's face visible in the wide desktop banner. */
+.hero-photo {
+  object-position: center 10%;
+}

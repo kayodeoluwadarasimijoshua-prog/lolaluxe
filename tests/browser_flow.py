@@ -57,6 +57,10 @@ with tempfile.TemporaryDirectory() as data:
         page.get_by_role("button", name="Save product", exact=True).click()
         expect(page.get_by_role("heading", name="Your collection")).to_be_visible()
         page.locator(".wordmark").first.click()
+        expect(page.locator('a[href^="/admin"]')).to_have_count(0)
+        expect(page.locator(".hero-photo")).to_have_attribute(
+            "src", "/static/images/hero-editorial.webp"
+        )
         page.get_by_role("button", name="Bags", exact=True).click()
         expect(page.locator(".product")).to_have_count(1)
         page.get_by_role("link", name="Verification sample bag", exact=True).click()
@@ -91,7 +95,21 @@ with tempfile.TemporaryDirectory() as data:
         page.goto("http://127.0.0.1:3001/admin/orders")
         page.get_by_label("Find order by reference").fill(h["reference"])
         page.locator("#order-list a").click()
-        for expected in ["₦8,000", "₦4,000", "₦0"]:
+
+        # A committed payment with a lost HTTP response must not become a second receipt on refresh.
+        def lose_payment_response(route):
+            response = route.fetch()
+            assert response.status == 200
+            route.abort("failed")
+
+        page.route("**/api/orders/*/payments", lose_payment_response, times=1)
+        page.locator("#payment-form [name=products]").fill("4000")
+        page.get_by_role("button", name="Record payment", exact=True).click()
+        expect(page.locator("#order-error")).to_contain_text("Failed to fetch")
+        page.reload()
+        expect(page.locator(".row.total strong")).to_have_text("₦8,000")
+        expect(page.locator(".payment-entry")).to_have_count(1)
+        for expected in ["₦4,000", "₦0"]:
             page.locator("#payment-form [name=products]").fill("4000")
             page.get_by_role("button", name="Record payment", exact=True).click()
             expect(page.locator(".row.total strong")).to_have_text(expected)

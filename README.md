@@ -61,5 +61,8 @@ The browser test uses `/usr/bin/chromium`, starts an isolated local server and c
 - [Phone-friendly owner guide](HANDOVER.md)
 - [Deployment, budget, DNS, HTTPS and backups](DEPLOYMENT.md)
 - [Build report](BUILD_REPORT.md)
+- [GPT-6 Astra audit and fixes](AUDIT.md)
 
 The visual direction follows the attached Stitch reference: rose, ivory, plum, gold, Playfair Display and Plus Jakarta Sans. Fonts are self-hosted with OFL licenses in `static/fonts`. Preview imagery is extracted from the user's supplied design screenshots because the original external image host was unavailable. Replace with original, rights-cleared product photography before launch. No third-party scripts, analytics or tracking are installed.
+
+The homepage editorial model was restored using the image-generation tool at the user’s request. Its optimized high-resolution asset is `static/images/hero-editorial.webp`. Other screenshot-derived sample product images still need original photography. Owner access is through the bookmarked `/admin` URL; no public navigation link is shown.

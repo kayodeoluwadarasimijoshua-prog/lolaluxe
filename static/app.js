@@ -35,11 +35,30 @@ const naira = (n) =>
     currency: "NGN",
     maximumFractionDigits: n % 100 ? 2 : 0,
   }).format(n / 100);
+function storedJSON(storage, key, fallback) {
+  try {
+    return JSON.parse(storage.getItem(key) || "null") ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+const restoredCart = storedJSON(localStorage, "lola-cart", []);
 let state = {
   products: [],
   categories: [],
   session: {},
-  cart: JSON.parse(localStorage.getItem("lola-cart") || "[]"),
+  cart: Array.isArray(restoredCart)
+    ? restoredCart.filter(
+        (i) =>
+          i &&
+          typeof i.product_id === "string" &&
+          typeof i.variant_id === "string" &&
+          Number.isInteger(i.qty) &&
+          i.qty > 0 &&
+          Number.isInteger(i.price) &&
+          i.price >= 0,
+      )
+    : [],
   category: "All",
   query: "",
   sort: "curated",
@@ -107,11 +126,10 @@ document.addEventListener("click", (e) => {
 });
 window.onpopstate = () => render();
 function shell(body, active = "shop") {
-  return `<div class="topbar">A LITTLE LUXURY, EVERY DAY. &nbsp; MADE FOR YOUR MOMENTS.</div><header class="header"><div class="header-inner"><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i><span class="brand-sub">THE CURATED BOUTIQUE</span></a><nav class="desktop-nav" aria-label="Shop"><a data-link href="/" class="${active === "shop" ? "active" : ""}">The boutique</a><a data-link href="/category/Bags">Bags</a><a data-link href="/category/Shoes">Shoes</a><a data-link href="/category/Clothes">Clothes</a><a data-link href="/category/Trousers">Trousers</a></nav><div class="header-actions"><a data-link href="/search" class="icon-btn" aria-label="Search products">${icon("search")}</a><a data-link href="/cart" class="icon-btn" aria-label="Your bag, ${count()} items">${icon("bag")}${count() ? `<span class="count">${count()}</span>` : ""}</a><a data-link href="/admin" class="icon-btn owner-icon" aria-label="Owner portal">${icon("user")}</a></div></div></header><main class="content">${body}</main><footer class="footer"><div class="content"><div class="footer-top"><div><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i></a><p>Thoughtfully chosen. Beautifully you.<br>Your little corner of everyday luxury.</p></div><div class="footer-links"><a data-link href="/category/Bags">Shop the edit</a><a href="https://wa.me/2347071181050" target="_blank" rel="noopener">Chat on WhatsApp ↗</a><a data-link href="/admin">Owner sign-in</a></div></div><div class="footer-bottom"><span>© ${new Date().getFullYear()} Lola’s Luxe. All rights reserved.</span><span>Curated with love in Nigeria &nbsp; · &nbsp; ₦ NGN</span></div></div></footer><nav class="mobile-nav" aria-label="Main navigation">${[
+  return `<div class="topbar">A LITTLE LUXURY, EVERY DAY. &nbsp; MADE FOR YOUR MOMENTS.</div><header class="header"><div class="header-inner"><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i><span class="brand-sub">THE CURATED BOUTIQUE</span></a><nav class="desktop-nav" aria-label="Shop"><a data-link href="/" class="${active === "shop" ? "active" : ""}">The boutique</a><a data-link href="/category/Bags">Bags</a><a data-link href="/category/Shoes">Shoes</a><a data-link href="/category/Clothes">Clothes</a><a data-link href="/category/Trousers">Trousers</a></nav><div class="header-actions"><a data-link href="/search" class="icon-btn" aria-label="Search products">${icon("search")}</a><a data-link href="/cart" class="icon-btn" aria-label="Your bag, ${count()} items">${icon("bag")}${count() ? `<span class="count">${count()}</span>` : ""}</a></div></div></header><main class="content">${body}</main><footer class="footer"><div class="content"><div class="footer-top"><div><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i></a><p>Thoughtfully chosen. Beautifully you.<br>Your little corner of everyday luxury.</p></div><div class="footer-links"><a data-link href="/category/Bags">Shop the edit</a><a href="https://wa.me/2347071181050" target="_blank" rel="noopener">Chat on WhatsApp ↗</a></div></div><div class="footer-bottom"><span>© ${new Date().getFullYear()} Lola’s Luxe. All rights reserved.</span><span>Curated with love in Nigeria &nbsp; · &nbsp; ₦ NGN</span></div></div></footer><nav class="mobile-nav" aria-label="Main navigation">${[
     ["home", "Boutique", "/", "shop"],
     ["grid", "Categories", "/categories", "categories"],
     ["bag", `Bag${count() ? " (" + count() + ")" : ""}`, "/cart", "cart"],
-    ["user", "Owner", "/admin", "admin"],
   ]
     .map(
       ([i, t, h, a]) =>
@@ -132,7 +150,7 @@ const slides = [
     tag: "THE EVERYDAY MUSE",
     title: "Effortless style.<br><em>Beautifully you.</em>",
     desc: "Beautiful pieces for wherever life takes you. Meet your next wardrobe favourites.",
-    image: "hero",
+    image: "hero-editorial",
   },
   {
     category: "Shoes",
@@ -153,11 +171,10 @@ function hero() {
   let s = slides[state.slide];
   return `<div class="hero-heading"><span class="eyebrow">THE CURATED EDIT / ${String(state.slide + 1).padStart(2, "0")}</span><span class="tiny">Considered pieces. Endless possibilities.</span></div><section class="hero" aria-label="Featured collection"><div class="hero-copy"><span class="eyebrow">${s.tag}</span><h1>${s.title}</h1><p>${s.desc}</p><a data-link class="btn" href="/category/${s.category}">Shop ${s.category.toLowerCase()} ${icon("arrow")}</a></div><img class="hero-photo" src="/static/images/${s.image}.webp" alt="${s.category === "Trousers" ? "A woman wearing softly pleated blush trousers" : s.category + " collection preview"}"></section><div class="hero-bottom"><div class="dots">${slides.map((s, i) => `<button data-slide="${i}" class="${state.slide === i ? "active" : ""}" aria-label="Show Shop ${s.category}" aria-pressed="${state.slide === i}"></button>`).join("")}</div><div><span class="tiny">A wardrobe, thoughtfully curated.</span><button class="carousel-control" data-slide="${(state.slide + 2) % 3}" aria-label="Previous collection">${icon("left")}</button><button class="carousel-control" data-slide="${(state.slide + 1) % 3}" aria-label="Next collection">${icon("right")}</button></div></div>`;
 }
-function catalogue(category = "All", search = false) {
-  state.category = category;
+function catalogueProducts() {
   let ps = state.products.filter(
     (p) =>
-      (category === "All" || p.category === category) &&
+      (state.category === "All" || p.category === state.category) &&
       (!state.query ||
         (p.name + " " + p.category + " " + p.description)
           .toLowerCase()
@@ -165,9 +182,14 @@ function catalogue(category = "All", search = false) {
   );
   if (state.sort === "low") ps.sort((a, b) => a.price - b.price);
   if (state.sort === "high") ps.sort((a, b) => b.price - a.price);
+  return ps;
+}
+function catalogue(category = "All", search = false) {
+  state.category = category;
+  const ps = catalogueProducts();
   const home = !search && path() === "/";
   return shell(
-    `${home ? `<div id="hero">${hero()}</div><div class="benefits"><span>${icon("spark")} Thoughtfully curated pieces</span><span>${icon("chat")} Personal WhatsApp checkout</span><span>${icon("shield")} A little luxury, made personal</span></div>` : heading(search ? "Find your next favourite" : esc(category), search ? "A little something you’ll love." : "Your wardrobe’s next chapter starts here.")} ${search ? `<div class="searchbox">${icon("search")}<input id="search" type="search" aria-label="Search products" placeholder="Search bags, shoes, clothing…" value="${esc(state.query)}"><button id="clear-search" aria-label="Clear search">${icon("close")}</button></div>` : ""}<section id="edit"><div class="section-heading"><div><span class="eyebrow">CHOSEN WITH YOU IN MIND</span><h2>${home ? "Your next favourites" : search ? "The search edit" : esc(category) + " edit"}</h2><p>${ps.length} ${ps.length === 1 ? "piece" : "pieces"} to make your own</p></div>${state.session.preview ? '<span class="sample-notice">Preview catalogue</span>' : ""}</div><div class="filters"><div class="chips" aria-label="Product category">${["All", ...state.categories].map((c) => `<button class="chip ${c === category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === category}">${esc(c)}</button>`).join("")}</div><select id="sort" class="sort" aria-label="Sort products"><option value="curated">Curated for you</option><option value="low" ${state.sort === "low" ? "selected" : ""}>Price: low to high</option><option value="high" ${state.sort === "high" ? "selected" : ""}>Price: high to low</option></select></div><div id="product-grid">${cards(ps)}</div></section><section class="story"><div><div class="eyebrow">A PERSONAL TOUCH</div><h2>Your style. Your pace.</h2><p>Ask us on WhatsApp about paying in instalments.<br>Oluwadamilola is here to help you find your perfect piece.</p></div><a class="btn secondary" href="https://wa.me/2347071181050" target="_blank" rel="noopener">${icon("chat")} Let’s chat</a></section>`,
+    `${home ? `<div id="hero">${hero()}</div><div class="benefits"><span>${icon("spark")} Thoughtfully curated pieces</span><span>${icon("chat")} Personal WhatsApp checkout</span><span>${icon("shield")} A little luxury, made personal</span></div>` : heading(search ? "Find your next favourite" : esc(category), search ? "A little something you’ll love." : "Your wardrobe’s next chapter starts here.")} ${search ? `<div class="searchbox">${icon("search")}<input id="search" type="search" aria-label="Search products" placeholder="Search bags, shoes, clothing…" value="${esc(state.query)}"><button id="clear-search" aria-label="Clear search">${icon("close")}</button></div>` : ""}<section id="edit"><div class="section-heading"><div><span class="eyebrow">CHOSEN WITH YOU IN MIND</span><h2>${home ? "Your next favourites" : search ? "The search edit" : esc(category) + " edit"}</h2><p id="result-count" aria-live="polite">${ps.length} ${ps.length === 1 ? "piece" : "pieces"} to make your own</p></div>${state.session.preview ? '<span class="sample-notice">Preview catalogue</span>' : ""}</div><div class="filters"><div class="chips" aria-label="Product category">${["All", ...state.categories].map((c) => `<button class="chip ${c === category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === category}">${esc(c)}</button>`).join("")}</div><select id="sort" class="sort" aria-label="Sort products"><option value="curated">Curated for you</option><option value="low" ${state.sort === "low" ? "selected" : ""}>Price: low to high</option><option value="high" ${state.sort === "high" ? "selected" : ""}>Price: high to low</option></select></div><div id="product-grid">${cards(ps)}</div></section><section class="story"><div><div class="eyebrow">A PERSONAL TOUCH</div><h2>Your style. Your pace.</h2><p>Ask us on WhatsApp about paying in instalments.<br>Oluwadamilola is here to help you find your perfect piece.</p></div><a class="btn secondary" href="https://wa.me/2347071181050" target="_blank" rel="noopener">${icon("chat")} Let’s chat</a></section>`,
     category === "All" ? "shop" : "categories",
   );
 }
@@ -220,13 +242,9 @@ function bindCatalogue() {
   if ($("#search")) {
     $("#search").oninput = (e) => {
       state.query = e.target.value;
-      let ps = state.products.filter(
-        (p) =>
-          (state.category === "All" || p.category === state.category) &&
-          (p.name + " " + p.category + " " + p.description)
-            .toLowerCase()
-            .includes(state.query.toLowerCase()),
-      );
+      const ps = catalogueProducts();
+      $("#result-count").textContent =
+        `${ps.length} ${ps.length === 1 ? "piece" : "pieces"} to make your own`;
       $("#product-grid").innerHTML = cards(ps);
     };
     $("#clear-search").onclick = () => {
@@ -644,12 +662,18 @@ function bindProductForm() {
 function orderView(o) {
   let replaced = new Set(o.payments.map((p) => p.corrects).filter(Boolean));
   return adminShell(
-    `<div class="section-heading"><div><a data-link href="/admin/orders" class="text-btn">← Order book</a><h2>${o.id}</h2><span class="tiny">${o.fulfilment} · Website order request</span></div>${statusPill(o)}</div>${o.overdue || o.follow_up ? `<div class="error">Follow up: ${o.overdue ? "the agreed due date has passed. " : ""}${o.follow_up ? "The third payment left a product balance." : ""}</div>` : ""}${o.excess ? `<div class="error">Excess product payment: ${naira(o.excess)}. Review with the customer.</div>` : ""}<div id="order-error"></div><div class="admin-order"><div><section class="panel"><h3>Original order</h3>${o.items.map((i) => `<div class="cart-line"><img src="${esc(i.image)}" alt=""><div class="cart-info"><h3>${esc(i.name)}</h3><p>${esc(i.size || "One size")} / ${esc(i.colour)} · Qty ${i.qty}</p><span class="price">${naira(i.price * i.qty)}</span>${!["Paid", "Dismissed"].includes(o.status) ? `<div><button class="text-btn" data-reserve="${esc(i.variant_id)}" data-product="${esc(i.product_id)}" data-qty="${o.reservations.some((r) => r.variant === i.variant_id && r.product_id === i.product_id) ? 0 : i.qty}">${o.reservations.some((r) => r.variant === i.variant_id && r.product_id === i.product_id) ? "Release reservation" : "Reserve this selection"}</button></div>` : ""}</div></div>`).join("")}<div class="row"><span>Product total</span><strong>${naira(o.total)}</strong></div><div class="row"><span>Paid toward products</span><strong>${naira(o.paid_products)}</strong></div><div class="row total"><span>Product balance</span><strong>${naira(o.balance)}</strong></div><div class="row"><span>Agreed delivery fee</span><span>${naira(o.delivery_fee)}</span></div><p class="tiny">${o.rider_direct ? "Customer pays rider directly; this fee is not owner receipts." : `Owner received for delivery: ${naira(o.paid_delivery)} · Delivery balance: ${naira(o.delivery_balance)}`}</p></section><section class="panel"><h3>Payment history</h3>${!o.payments.length ? '<p class="tiny">No verified transfers recorded yet.</p>' : o.payments.map((p) => `<div class="payment-entry ${replaced.has(p.id) ? "corrected" : ""}"><div class="row"><strong>${naira(p.products)} products + ${naira(p.delivery)} delivery</strong><span>${esc(p.received)}</span></div><p>Recorded by ${esc(p.actor)} · ${esc(p.created)}</p>${p.note ? `<p>Exception / note: ${esc(p.note)}</p>` : ""}${p.corrects ? `<p>Correction of ${esc(p.corrects)} · Reason: ${esc(p.reason)}</p>` : ""}${replaced.has(p.id) ? '<span class="pill">Preserved · corrected</span>' : o.status !== "Dismissed" ? `<button data-correct="${p.id}" class="text-btn">Correct this payment</button>` : ""}</div>`).join("")}</section></div><aside>${o.status !== "Dismissed" ? `<form class="panel" id="payment-form"><h3 id="payment-title">Record verified payment</h3><p class="tiny">Only log money you have actually received. Split a combined transfer between products and delivery.</p><input type="hidden" name="corrects"><label class="field">Received on<input type="date" name="received" value="${new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" })}" required></label><div class="form-grid"><label class="field">Toward products (₦)<input type="number" step="0.01" min="0" name="products" value="0" required></label><label class="field">Toward delivery (₦)<input type="number" step="0.01" min="0" name="delivery" value="0" required></label></div><label class="field">Note / exception<textarea name="note" placeholder="Explain any payment outside the agreement or excess"></textarea></label><label class="field" id="correction-field" hidden>Correction reason<input name="reason"></label><button class="btn full">Record payment</button><button type="button" id="cancel-correction" class="text-btn" hidden>Cancel correction</button></form><form class="panel" id="agreement"><h3>Agreement & delivery</h3><p class="tiny">Up to 3 payments. Stated terms: ₦2,000 minimum and completion within 2 weeks. How the minimum applies and the start date are unconfirmed; record your agreed due date and terms here.</p><label class="field">Agreed due date<input type="date" name="due" value="${esc(o.due || "")}"></label><label class="field">Agreement note<textarea name="note">${esc(o.note)}</textarea></label><label class="field">Agreed delivery fee (₦)<input name="delivery_fee" type="number" step="0.01" min="0" value="${o.delivery_fee / 100}"></label><label class="check"><input type="checkbox" name="rider_direct" ${o.rider_direct ? "checked" : ""}> Customer pays rider directly</label><button class="btn secondary full">Save agreement</button></form>${o.status !== "Paid" ? `<details class="panel"><summary>Close / dismiss request</summary><form id="dismiss"><p class="tiny">${o.payments.length ? "Review every payment above before closing. The payment history and received amounts remain accounted for." : "You can dismiss an abandoned request with no payments."}</p>${o.payments.length ? `<div class="close-review"><label class="field">Type ${o.id} to confirm review<input name="review" required></label><label class="field">Closing reason<textarea name="reason" required></textarea></label></div>` : ""}<button class="btn secondary full">Dismiss request</button></form></details>` : ""}` : '<div class="panel"><h3>Request closed</h3><p class="tiny">Original payments and closing notes are retained for review.</p><p>${esc(o.note)}</p></div>'}</aside></div>`,
+    `<div class="section-heading"><div><a data-link href="/admin/orders" class="text-btn">← Order book</a><h2>${o.id}</h2><span class="tiny">${o.fulfilment} · Website order request</span></div>${statusPill(o)}</div>${o.overdue || o.follow_up ? `<div class="error">Follow up: ${o.overdue ? "the agreed due date has passed. " : ""}${o.follow_up ? "The third payment left a product balance." : ""}</div>` : ""}${o.excess ? `<div class="error">Excess product payment: ${naira(o.excess)}. Review with the customer.</div>` : ""}${o.delivery_excess ? `<div class="error">Excess delivery payment: ${naira(o.delivery_excess)}. Review with the customer.</div>` : ""}${(o.inventory_conflicts || []).map((message) => `<div class="error">${esc(message)}</div>`).join("")}<div id="order-error"></div><div class="admin-order"><div><section class="panel"><h3>Original order</h3>${o.items.map((i) => `<div class="cart-line"><img src="${esc(i.image)}" alt=""><div class="cart-info"><h3>${esc(i.name)}</h3><p>${esc(i.size || "One size")} / ${esc(i.colour)} · Qty ${i.qty}</p><span class="price">${naira(i.price * i.qty)}</span>${!["Paid", "Dismissed"].includes(o.status) ? `<div><button class="text-btn" data-reserve="${esc(i.variant_id)}" data-product="${esc(i.product_id)}" data-qty="${o.reservations.some((r) => r.variant === i.variant_id && r.product_id === i.product_id) ? 0 : i.qty}">${o.reservations.some((r) => r.variant === i.variant_id && r.product_id === i.product_id) ? "Release reservation" : "Reserve this selection"}</button></div>` : ""}</div></div>`).join("")}<div class="row"><span>Product total</span><strong>${naira(o.total)}</strong></div><div class="row"><span>Paid toward products</span><strong>${naira(o.paid_products)}</strong></div><div class="row total"><span>Product balance</span><strong>${naira(o.balance)}</strong></div><div class="row"><span>Agreed delivery fee</span><span>${naira(o.delivery_fee)}</span></div><p class="tiny">${o.rider_direct ? "Customer pays rider directly; this fee is not owner receipts." : `Owner received for delivery: ${naira(o.paid_delivery)} · Delivery balance: ${naira(o.delivery_balance)}`}</p></section><section class="panel"><h3>Payment history</h3>${!o.payments.length ? '<p class="tiny">No verified transfers recorded yet.</p>' : o.payments.map((p) => `<div class="payment-entry ${replaced.has(p.id) ? "corrected" : ""}"><div class="row"><strong>${naira(p.products)} products + ${naira(p.delivery)} delivery</strong><span>${esc(p.received)}</span></div><p>Recorded by ${esc(p.actor)} · ${esc(p.created)}</p>${p.note ? `<p>Exception / note: ${esc(p.note)}</p>` : ""}${p.corrects ? `<p>Correction of ${esc(p.corrects)} · Reason: ${esc(p.reason)}</p>` : ""}${replaced.has(p.id) ? '<span class="pill">Preserved · corrected</span>' : o.status !== "Dismissed" ? `<button data-correct="${p.id}" class="text-btn">Correct this payment</button>` : ""}</div>`).join("")}</section></div><aside>${o.status !== "Dismissed" ? `<form class="panel" id="payment-form"><h3 id="payment-title">Record verified payment</h3><p class="tiny">Only log money you have actually received. Split a combined transfer between products and delivery.</p><input type="hidden" name="corrects"><label class="field">Received on<input type="date" name="received" value="${new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" })}" required></label><div class="form-grid"><label class="field">Toward products (₦)<input type="number" step="0.01" min="0" name="products" value="0" required></label><label class="field">Toward delivery (₦)<input type="number" step="0.01" min="0" name="delivery" value="0" required></label></div><label class="field">Note / exception<textarea name="note" placeholder="Explain any payment outside the agreement or excess"></textarea></label><label class="field" id="correction-field" hidden>Correction reason<input name="reason"></label><button class="btn full">Record payment</button><button type="button" id="cancel-correction" class="text-btn" hidden>Cancel correction</button></form><form class="panel" id="agreement"><h3>Agreement & delivery</h3><p class="tiny">Up to 3 payments. Stated terms: ₦2,000 minimum and completion within 2 weeks. How the minimum applies and the start date are unconfirmed; record your agreed due date and terms here.</p><label class="field">Agreed due date<input type="date" name="due" value="${esc(o.due || "")}"></label><label class="field">Agreement note<textarea name="note">${esc(o.note)}</textarea></label><label class="field">Agreed delivery fee (₦)<input name="delivery_fee" type="number" step="0.01" min="0" value="${o.delivery_fee / 100}"></label><label class="check"><input type="checkbox" name="rider_direct" ${o.rider_direct ? "checked" : ""}> Customer pays rider directly</label><button class="btn secondary full">Save agreement</button></form>${o.status !== "Paid" ? `<details class="panel"><summary>Close / dismiss request</summary><form id="dismiss"><p class="tiny">${o.payments.length ? "Review every payment above before closing. The payment history and received amounts remain accounted for." : "You can dismiss an abandoned request with no payments."}</p>${o.payments.length ? `<div class="close-review"><label class="field">Type ${o.id} to confirm review<input name="review" required></label><label class="field">Closing reason<textarea name="reason" required></textarea></label></div>` : ""}<button class="btn secondary full">Dismiss request</button></form></details>` : ""}` : '<div class="panel"><h3>Request closed</h3><p class="tiny">Original payments and closing notes are retained for review.</p><p>${esc(o.note)}</p></div>'}</aside></div>`,
     "orders",
   );
 }
 function bindOrder(o) {
-  paymentKey = crypto.randomUUID();
+  const pendingName = "lola-pending-payment-" + o.id;
+  let pending = storedJSON(sessionStorage, pendingName, null);
+  if (pending && o.payments.some((p) => p.submission_key === pending.key)) {
+    sessionStorage.removeItem(pendingName);
+    pending = null;
+  }
+  paymentKey = pending?.key || crypto.randomUUID();
   const refresh = async () => {
     state.products = await api("products");
     await render();
@@ -683,7 +707,7 @@ function bindOrder(o) {
         button = e.submitter;
       button.disabled = true;
       try {
-        await api(`orders/${o.id}/payments`, {
+        const payment = {
           key: paymentKey,
           products: Math.round(Number(f.get("products")) * 100),
           delivery: Math.round(Number(f.get("delivery")) * 100),
@@ -691,7 +715,10 @@ function bindOrder(o) {
           note: f.get("note"),
           corrects: f.get("corrects") || null,
           reason: f.get("reason"),
-        });
+        };
+        sessionStorage.setItem(pendingName, JSON.stringify(payment));
+        await api(`orders/${o.id}/payments`, payment);
+        sessionStorage.removeItem(pendingName);
         toast("Payment recorded.");
         await refresh();
       } catch (err) {
@@ -716,7 +743,26 @@ function bindOrder(o) {
           f.scrollIntoView({ block: "center", behavior: "smooth" });
         }),
     );
-    $("#cancel-correction").onclick = () => render();
+    if (pending) {
+      const form = $("#payment-form");
+      for (const key of ["products", "delivery"])
+        form.elements[key].value = pending[key] / 100;
+      for (const key of ["received", "note", "corrects", "reason"])
+        form.elements[key].value = pending[key] || "";
+      form.insertAdjacentHTML(
+        "afterbegin",
+        '<p class="note">An unconfirmed payment entry was restored. Check the history below before retrying; a retry uses the same submission reference.</p>',
+      );
+      if (pending.corrects) {
+        $("#payment-title").textContent = "Correct payment";
+        $("#correction-field").hidden = false;
+        form.elements.reason.required = true;
+      }
+    }
+    $("#cancel-correction").onclick = () => {
+      sessionStorage.removeItem(pendingName);
+      render();
+    };
     $("#agreement").onsubmit = async (e) => {
       e.preventDefault();
       let f = new FormData(e.target),

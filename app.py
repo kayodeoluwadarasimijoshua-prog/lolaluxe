@@ -233,6 +233,9 @@ def create_app(config=None):
         o["delivery_balance"] = (
             0 if o["rider_direct"] else max(0, o["delivery_fee"] - o["paid_delivery"])
         )
+        o["delivery_excess"] = max(
+            0, o["paid_delivery"] - (0 if o["rider_direct"] else o["delivery_fee"])
+        )
         o["overdue"] = bool(
             o["due"]
             and o["balance"]
@@ -244,6 +247,42 @@ def create_app(config=None):
             dict(x)
             for x in db().execute("SELECT * FROM reservations WHERE order_id=?", (ref,))
         ]
+        o["inventory_conflicts"] = []
+        for item in o["items"]:
+            row = (
+                db()
+                .execute(
+                    "SELECT variants FROM products WHERE id=?", (item["product_id"],)
+                )
+                .fetchone()
+            )
+            variant = (
+                next(
+                    (v for v in json.loads(row[0]) if v["id"] == item["variant_id"]),
+                    None,
+                )
+                if row
+                else None
+            )
+            if variant:
+                held = int(
+                    db()
+                    .execute(
+                        "SELECT COALESCE(SUM(qty),0) FROM reservations WHERE product_id=? AND variant=?",
+                        (item["product_id"], item["variant_id"]),
+                    )
+                    .fetchone()[0]
+                )
+                if variant["stock"] < held:
+                    o["inventory_conflicts"].append(
+                        item["name"]
+                        + ": stock does not cover existing reservations. Review before fulfilment."
+                    )
+            elif o["status"] not in ("Paid", "Dismissed"):
+                o["inventory_conflicts"].append(
+                    item["name"]
+                    + ": the original size/colour is no longer in the catalogue."
+                )
         return o
 
     def recalc(ref):
@@ -411,6 +450,23 @@ def create_app(config=None):
             raise ValueError("Upload 1–8 product photos.")
         with db():
             db().execute("BEGIN IMMEDIATE")
+            old_row = (
+                db()
+                .execute("SELECT variants FROM products WHERE id=?", (pid,))
+                .fetchone()
+            )
+            old_variants = (
+                {v["id"]: v for v in json.loads(old_row[0])} if old_row else {}
+            )
+            for v in variants:
+                old = old_variants.get(v["id"])
+                if old and (old.get("size", ""), old.get("colour", "")) != (
+                    v["size"],
+                    v["colour"],
+                ):
+                    ids.discard(v["id"])
+                    v["id"] = secrets.token_hex(6)
+                    ids.add(v["id"])
             for r in db().execute(
                 "SELECT variant,SUM(qty) qty FROM reservations WHERE product_id=? GROUP BY variant",
                 (pid,),
@@ -655,14 +711,34 @@ def create_app(config=None):
         with db():
             db().execute("BEGIN IMMEDIATE")
             o = getorder(ref)
-            if (
+            existing = (
                 db()
-                .execute("SELECT 1 FROM payments WHERE submission_key=?", (key,))
+                .execute("SELECT * FROM payments WHERE submission_key=?", (key,))
                 .fetchone()
-            ):
+            )
+            if existing:
+                expected = (ref, p, d, received, note, corrects, reason)
+                actual = tuple(
+                    existing[k]
+                    for k in (
+                        "order_id",
+                        "products",
+                        "delivery",
+                        "received",
+                        "note",
+                        "corrects",
+                        "reason",
+                    )
+                )
+                if actual != expected:
+                    return fail(
+                        "This submission already recorded a different payment. Review its history before starting another entry.",
+                        409,
+                    )
                 return jsonify(getorder(ref))
             if o["status"] == "Dismissed":
                 raise ValueError("Dismissed orders cannot receive payments.")
+            original = None
             if corrects:
                 original = (
                     db()
@@ -682,10 +758,18 @@ def create_app(config=None):
                     raise ValueError(
                         "Select an uncorrected payment and enter the correction reason."
                     )
+            projected_products = (
+                o["paid_products"] - (original["products"] if original else 0) + p
+            )
+            projected_delivery = (
+                o["paid_delivery"] - (original["delivery"] if original else 0) + d
+            )
+            delivery_target = 0 if o["rider_direct"] else o["delivery_fee"]
             if (
-                o["payment_count"] >= 3
+                (not corrects and o["payment_count"] >= 3)
                 or (o["due"] and received > o["due"])
-                or p > o["balance"]
+                or projected_products > o["total"]
+                or projected_delivery > delivery_target
             ) and not note:
                 raise ValueError(
                     "Add an exception note for a payment outside the agreement or an excess."
@@ -765,9 +849,14 @@ def create_app(config=None):
                 (ref, pid, vid),
             )
             row = db().execute("SELECT * FROM products WHERE id=?", (pid,)).fetchone()
-            p = product(row)
-            v = next(v for v in p["variants"] if v["id"] == vid)
-            if qty > v["available"]:
+            p = product(row) if row else None
+            v = next((v for v in p["variants"] if v["id"] == vid), None) if p else None
+            if not v and qty:
+                return fail(
+                    "The original size/colour is no longer available. Review the order before reserving another selection.",
+                    409,
+                )
+            if v and qty > v["available"]:
                 raise ValueError("Not enough unreserved stock.")
             if qty:
                 db().execute(
