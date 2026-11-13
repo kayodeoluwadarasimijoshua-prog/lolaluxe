@@ -1,6 +1,12 @@
 # Build report
 
-## Vercel update
+## Neon and Cloudinary update
+
+The recommended deployment now uses **Vercel + Neon PostgreSQL + Cloudinary photos**. Cloudinary uses authenticated server-side signed uploads, validates returned image URLs against the configured cloud/folder, keeps credentials out of browser responses and uses the same existing photo optimization path. Supabase remains an optional alternative. Neon works through the existing PostgreSQL adapter; no database logic rewrite is needed.
+
+**30 tests pass**, and the phone acceptance flow passes after this change. The provider transport tests use SDK/HTTP stubs; no live Neon/Cloudinary account was available for remote verification. Account setup, real deployment and DNS remain blocked on access. A practical setup guide is in [VERCEL.md](VERCEL.md).
+
+## Previous Vercel update
 
 Source was pushed to `kayodeoluwadarasimijoshua-prog/lolaluxe` on GitHub. The domain is now **shopwithlolaluxe.com.ng**. Vercel configuration, PostgreSQL transactions, private-schema protections and Supabase photo storage are implemented. Local SQLite preview remains supported. Hosted deployment and DNS remain pending account/network access. See [VERCEL.md](VERCEL.md) for setup.
 

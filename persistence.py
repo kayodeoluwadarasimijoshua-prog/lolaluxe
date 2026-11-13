@@ -181,3 +181,53 @@ class SupabasePhotos:
         return url.startswith(prefix) and bool(
             re.fullmatch(r"[a-f0-9]{32}\.webp", url[len(prefix) :])
         )
+
+
+class CloudinaryPhotos:
+    """Signed server-side image uploads; secrets never enter storefront code."""
+
+    url = "https://res.cloudinary.com"
+
+    def __init__(self, cloud_name, api_key, api_secret):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", cloud_name):
+            raise RuntimeError("Use the Cloudinary cloud name from your dashboard.")
+        self.cloud_name, self.api_key, self.api_secret = cloud_name, api_key, api_secret
+
+    def valid_url(self, url):
+        prefix = f"{self.url}/{self.cloud_name}/image/upload/"
+        return url.startswith(prefix) and bool(
+            re.fullmatch(
+                r"(?:v[0-9]+/)?lolaluxe/products/[a-f0-9]{32}\.webp", url[len(prefix) :]
+            )
+        )
+
+    def upload(self, name, content):
+        import io
+        import cloudinary.uploader
+        from cloudinary.exceptions import Error
+        from urllib3.exceptions import HTTPError as TransportError
+
+        if not re.fullmatch(r"[a-f0-9]{32}\.webp", name):
+            raise ValueError("Invalid photo name.")
+        try:
+            result = cloudinary.uploader.upload(
+                io.BytesIO(content),
+                cloud_name=self.cloud_name,
+                api_key=self.api_key,
+                api_secret=self.api_secret,
+                secure=True,
+                folder="lolaluxe/products",
+                public_id=name[:-5],
+                resource_type="image",
+                format="webp",
+                overwrite=False,
+                timeout=20,
+            )
+            url = result.get("secure_url", "")
+            if not self.valid_url(url):
+                raise ValueError("Unexpected image URL.")
+            return url
+        except (Error, TransportError, OSError, ValueError):
+            raise ValueError(
+                "Photo storage is unavailable. Please try again."
+            ) from None

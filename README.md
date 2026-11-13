@@ -1,6 +1,6 @@
 # Lola’s Luxe
 
-A mobile-first Nigerian boutique for Oluwadamilola. Flask serves a small, dependency-light JavaScript application; SQLite stores products, orders, reservations, owner authentication and the payment audit trail. Photos are resized to WebP. Vercel deployments use hosted PostgreSQL and Supabase Storage; plain local previews use SQLite and a local photo directory. See [VERCEL.md](VERCEL.md) for the current deployment instructions for **shopwithlolaluxe.com.ng**. There is no payment gateway: verified payments and agreements happen in WhatsApp.
+A mobile-first Nigerian boutique for Oluwadamilola. Flask serves a small, dependency-light JavaScript application; SQLite stores products, orders, reservations, owner authentication and the payment audit trail. Photos are resized to WebP. Vercel deployments use hosted PostgreSQL (Neon recommended) and Cloudinary photos; plain local previews use SQLite and a local photo directory. See [VERCEL.md](VERCEL.md) for the current deployment instructions for **shopwithlolaluxe.com.ng**. There is no payment gateway: verified payments and agreements happen in WhatsApp.
 
 ## Run locally
 
@@ -19,7 +19,7 @@ The default is a **local preview**, with sample seeding available. Production mu
 
 ## Vercel deployment
 
-See [VERCEL.md](VERCEL.md) for GitHub import, hosted database and photos, WhoGoHost DNS, HTTPS, costs and private owner setup. `.env.example` lists the hosted settings. Vercel refuses to run without persistent database/storage configuration.
+See [VERCEL.md](VERCEL.md) for GitHub import, Neon database and Cloudinary photos, WhoGoHost DNS, HTTPS, costs and private owner setup. `.env.example` lists the hosted settings. Vercel refuses to run without persistent database/storage configuration.
 
 ## Configuration
 

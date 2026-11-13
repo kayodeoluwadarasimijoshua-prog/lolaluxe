@@ -14,7 +14,12 @@ from flask import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from PIL import Image, ImageOps, UnidentifiedImageError
-from persistence import connect_database, SupabasePhotos, PRODUCT_COLUMNS
+from persistence import (
+    connect_database,
+    SupabasePhotos,
+    CloudinaryPhotos,
+    PRODUCT_COLUMNS,
+)
 
 ROOT = Path(__file__).parent
 
@@ -47,6 +52,9 @@ def create_app(config=None):
         SUPABASE_URL=os.getenv("SUPABASE_URL", ""),
         SUPABASE_SERVICE_ROLE_KEY=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
         SUPABASE_STORAGE_BUCKET=os.getenv("SUPABASE_STORAGE_BUCKET", "product-images"),
+        CLOUDINARY_CLOUD_NAME=os.getenv("CLOUDINARY_CLOUD_NAME", ""),
+        CLOUDINARY_API_KEY=os.getenv("CLOUDINARY_API_KEY", ""),
+        CLOUDINARY_API_SECRET=os.getenv("CLOUDINARY_API_SECRET", ""),
         SECRET_KEY=os.getenv("SECRET_KEY"),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -56,17 +64,23 @@ def create_app(config=None):
     )
     if config:
         app.config.update(config)
+    cloudinary_fields = (
+        "CLOUDINARY_CLOUD_NAME",
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+    )
+    has_cloudinary = all(app.config.get(name) for name in cloudinary_fields)
+    has_supabase = bool(
+        app.config["SUPABASE_URL"] and app.config["SUPABASE_SERVICE_ROLE_KEY"]
+    )
+    if any(app.config.get(name) for name in cloudinary_fields) and not has_cloudinary:
+        raise RuntimeError("Set all three Cloudinary environment variables.")
     if vercel:
         missing = [
-            name
-            for name in (
-                "DATABASE_URL",
-                "SUPABASE_URL",
-                "SUPABASE_SERVICE_ROLE_KEY",
-                "SECRET_KEY",
-            )
-            if not app.config.get(name)
+            name for name in ("DATABASE_URL", "SECRET_KEY") if not app.config.get(name)
         ]
+        if not has_cloudinary and not has_supabase:
+            missing.extend(cloudinary_fields)
         if missing:
             raise RuntimeError(
                 "Configure Vercel environment variables: " + ", ".join(missing)
@@ -77,7 +91,11 @@ def create_app(config=None):
             raise RuntimeError("SECRET_KEY must contain at least 32 characters.")
     data = Path(app.config["DATA_DIR"])
     remote_photos = None
-    if app.config["SUPABASE_URL"] and app.config["SUPABASE_SERVICE_ROLE_KEY"]:
+    if has_cloudinary:
+        remote_photos = CloudinaryPhotos(
+            *(app.config[name] for name in cloudinary_fields)
+        )
+    elif has_supabase:
         remote_photos = SupabasePhotos(
             app.config["SUPABASE_URL"],
             app.config["SUPABASE_SERVICE_ROLE_KEY"],

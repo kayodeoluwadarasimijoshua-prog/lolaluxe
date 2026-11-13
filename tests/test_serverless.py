@@ -133,3 +133,132 @@ def test_remote_storage_errors_do_not_expose_credentials(monkeypatch):
     with pytest.raises(ValueError, match="Photo storage is unavailable") as error:
         photos.upload("a" * 32 + ".webp", b"contents")
     assert "private-test-key" not in str(error.value)
+
+
+@pytest.mark.parametrize("photo_provider", ["supabase", "cloudinary"])
+def test_serverless_provider_selection(
+    monkeypatch, tmp_path, postgres_url, photo_provider
+):
+    import cloudinary.uploader
+
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setattr(
+        application,
+        "connect_database",
+        lambda url, path: persistence.PostgresDatabase(postgres_url),
+    )
+    config = {
+        "TESTING": True,
+        "DATABASE_URL": "postgresql://test-only",
+        "SECRET_KEY": secrets.token_urlsafe(48),
+        "DATA_DIR": str(tmp_path / "no-files"),
+        "SUPABASE_URL": "",
+        "SUPABASE_SERVICE_ROLE_KEY": "",
+        "CLOUDINARY_CLOUD_NAME": "",
+        "CLOUDINARY_API_KEY": "",
+        "CLOUDINARY_API_SECRET": "",
+        "SESSION_COOKIE_SECURE": False,
+    }
+    if photo_provider == "cloudinary":
+        config.update(
+            CLOUDINARY_CLOUD_NAME="test-cloud",
+            CLOUDINARY_API_KEY="test-key",
+            CLOUDINARY_API_SECRET="test-secret",
+        )
+        requests = []
+
+        def upload(content, **options):
+            requests.append(options)
+            assert Image.open(content).format == "WEBP"
+            return {
+                "secure_url": f"https://res.cloudinary.com/test-cloud/image/upload/v123/lolaluxe/products/{options['public_id']}.webp"
+            }
+
+        monkeypatch.setattr(cloudinary.uploader, "upload", upload)
+    else:
+        config.update(
+            SUPABASE_URL="https://test-project.supabase.co",
+            SUPABASE_SERVICE_ROLE_KEY="test-key",
+        )
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def read(self):
+                return b"{}"
+
+        monkeypatch.setattr(persistence, "urlopen", lambda *args, **kw: Response())
+    app = application.create_app(config)
+    with app.app_context():
+        app.db().execute(
+            "INSERT INTO owner VALUES(1,?,?)",
+            ("owner", generate_password_hash("test-password")),
+        )
+    client = app.test_client()
+
+    def post(url, body):
+        return client.post(
+            "/api/" + url,
+            json=body,
+            headers={"X-CSRF-Token": client.get("/api/session").json["csrf"]},
+        )
+
+    assert (
+        post("login", {"username": "owner", "password": "test-password"}).status_code
+        == 200
+    )
+    photo = io.BytesIO()
+    Image.new("RGB", (100, 100), "pink").save(photo, "PNG")
+    photo.seek(0)
+    response = client.post(
+        "/api/upload",
+        data={"photo": (photo, "photo.png")},
+        headers={"X-CSRF-Token": client.get("/api/session").json["csrf"]},
+    )
+    assert response.status_code == 200
+    url = response.json["url"]
+    product = {
+        "name": "Persistent piece",
+        "category": "Bags",
+        "price": 1200000,
+        "images": [url],
+        "variants": [{"id": "one", "stock": 1}],
+        "published": True,
+    }
+    assert post("products", product).status_code == 200
+    restarted = application.create_app(config)
+    assert restarted.test_client().get("/api/products").json[0]["images"] == [url]
+    assert not (tmp_path / "no-files").exists()
+    if photo_provider == "cloudinary":
+        assert requests[0]["api_secret"] == "test-secret"
+        assert "test-secret" not in response.get_data(as_text=True)
+        assert requests[0]["overwrite"] is False
+        assert (
+            "https://res.cloudinary.com"
+            in client.get("/").headers["Content-Security-Policy"]
+        )
+
+
+def test_cloudinary_rejects_untrusted_urls_and_hides_errors(monkeypatch):
+    import cloudinary.uploader
+    from cloudinary.exceptions import Error
+
+    photos = persistence.CloudinaryPhotos("test-cloud", "test-key", "test-secret")
+    assert not photos.valid_url(
+        "https://res.cloudinary.com/another-cloud/image/upload/v1/lolaluxe/products/"
+        + "a" * 32
+        + ".webp"
+    )
+    assert not photos.valid_url("https://untrusted.invalid/a.webp")
+
+    def fail(*args, **kw):
+        raise Error("provider response with test-secret")
+
+    monkeypatch.setattr(cloudinary.uploader, "upload", fail)
+    with pytest.raises(ValueError, match="Photo storage is unavailable") as error:
+        photos.upload("a" * 32 + ".webp", b"image")
+    assert "test-secret" not in str(error.value)

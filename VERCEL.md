@@ -1,71 +1,63 @@
-# Deploy shopwithlolaluxe.com.ng on Vercel
+# Finish deployment: Vercel + Neon + Cloudinary
 
-The GitHub repository is **kayodeoluwadarasimijoshua-prog/lolaluxe**. The purchased domain is **shopwithlolaluxe.com.ng**, registered at WhoGoHost. You can keep the registration there and host the application on Vercel.
+Domain: **shopwithlolaluxe.com.ng** at WhoGoHost.
+Repository: https://github.com/kayodeoluwadarasimijoshua-prog/lolaluxe
 
-## What is ready
+The current recommendation uses **Neon PostgreSQL** for products/orders/payments and **Cloudinary** for product photos. Supabase is optional and no longer required. Your existing PostgreSQL accounting code is retained. The previous Supabase setup is documented in [the alternative guide](deploy/SUPABASE_ALTERNATIVE.md).
 
-`vercel.json` packages the Flask app, templates, static assets and self-hosted fonts as a Python function. On Vercel it uses hosted PostgreSQL and Supabase image storage. It refuses to start with an ephemeral database or a missing stable signing key. Locally, it still works with SQLite and local photos without signing up for another service.
+## Account access
 
-PostgreSQL tables live in the non-public `lola_private` schema. They are fully qualified in queries, so transaction pooling works without relying on a persistent `search_path`. The schema is not intended for Supabase's public Data API, public/anonymous schema access is revoked, and row-level security is enabled. Do not expose this schema or add public policies. The service key stays server-side. Commerce transactions use a PostgreSQL advisory lock to preserve the original SQLite transaction semantics across Vercel instances.
+For remote setup, the assistant needs an enabled browser-control tool or connected account tools. The cloud environment supports a shared desktop, but its control tool was not exposed when last checked. To show the shared browser, open the right-hand panel → **+ → Desktop**. Choose **Take over**, sign in yourself, then choose **Return control**. Do not send passwords, API keys or database URLs in chat. This shared browser is separate from the browser on your own computer. Opening the viewer does not itself guarantee that assistant control tools become available.
 
-## 1. Create persistent storage in Supabase
+If Desktop is missing, report that before spending time creating new connections. The assistant cannot enable browser tools from inside this chat. Reconnect Vercel under Apps if its tool connection is missing. Remote setup also needs network access to Vercel, Neon PostgreSQL and Cloudinary.
 
-1. Create a project at https://supabase.com/dashboard. Select an appropriate region and save its database password privately.
-2. Under **Connect**, copy the **transaction pooler** PostgreSQL connection string (usually port 6543). Replace its password placeholder with the URL-encoded database password, and retain `sslmode=require`. Use that as `DATABASE_URL`.
-3. Under **Project Settings → API**, find the HTTPS project URL and the server-side **service_role** key. These become `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Do not use the anonymous key for uploads. Do not put the service key in GitHub, chat, browser JavaScript, or a public environment variable.
-4. Under **Storage**, create a **public** bucket called `product-images`, with an image/webp MIME restriction and a suitable small file-size limit (e.g. 4 MB). Public reading is intentional: these are product catalogue photos. Do not grant anonymous upload/update/delete access. The app uploads with the server-side key only after owner authentication.
-5. The app creates its private database schema/tables on first start. The pooler role must be able to create/own that schema. A dedicated least-privilege database role can be configured later; do not enable public Data API access to the private schema.
+## 1. Neon: persistent database
 
-## 2. Import the existing GitHub repository into Vercel
+1. Create/sign in to a Neon account at https://console.neon.tech and create a project for Lola's Luxe.
+2. Copy the **pooled PostgreSQL connection string**, retaining `sslmode=require`. Store it privately as `DATABASE_URL` in Vercel.
+3. The database user must own/create the app's schema. The app creates its tables in `lola_private`, with row-level security and no public policies. The owner/database role performs server-side writes. No browser database key is used.
+4. Use a separate staging database/branch for test deployments. Do not reuse a database with real orders for test checkout.
 
-1. Open https://vercel.com/new and sign in.
-2. Install/authorize the Vercel GitHub integration for **only the lolaluxe repository** if possible.
-3. Import `kayodeoluwadarasimijoshua-prog/lolaluxe` with `main` as the production branch.
-4. Keep the root directory at the repository root. The included configuration supplies the Python build; no Node build command or static output directory is needed.
-5. Before deploying, add these **server-side environment variables** for Production:
+## 2. Cloudinary: product photos
 
-| Name | Value |
+1. Create/sign in at https://console.cloudinary.com.
+2. Find the **cloud name**, **API key** and **API secret** in the product environment's API settings.
+3. Enter them privately in Vercel as `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET`.
+4. No unsigned upload preset is needed. The app signs uploads on the server after owner authentication. Photos are re-encoded as WebP, uploaded into `lolaluxe/products`, and served over HTTPS. Secrets are never sent to the storefront.
+
+## 3. Vercel: import and deploy
+
+1. Open https://vercel.com/new and import the existing GitHub repo **kayodeoluwadarasimijoshua-prog/lolaluxe**.
+2. Keep repository root as the root directory and `main` as the production branch. The included `vercel.json` builds the Flask app; no Node build command or static output directory is needed.
+3. Enter these server-side environment variables before deploying:
+
+| Variable | Value |
 | --- | --- |
+| `DATABASE_URL` | Neon's pooled PostgreSQL URI with TLS |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret |
+| `SECRET_KEY` | Strong, stable random value of at least 32 characters |
 | `PREVIEW` | `0` |
 | `COOKIE_SECURE` | `1` |
-| `DATABASE_URL` | Supabase transaction pooler connection string with TLS |
-| `SUPABASE_URL` | HTTPS project URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Private service-role API key |
-| `SUPABASE_STORAGE_BUCKET` | `product-images` |
-| `SECRET_KEY` | One strong stable random value, at least 32 characters |
 
-Generate `SECRET_KEY` locally with `python -c 'import secrets; print(secrets.token_urlsafe(48))'` and enter it privately in Vercel. Do not rotate it between requests/deployments: it signs owner sessions. A full environment example is in `.env.example`.
+Generate a signing key privately with `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. Keep it stable across deploys. An example is in `.env.example`; never commit actual values.
 
-6. Deploy. Open the resulting `.vercel.app` URL and check function logs. Empty catalogue is expected before products are published.
-7. Initialize the owner securely using the command below, then sign in at `/admin` and publish original products.
+4. Deploy and open the `.vercel.app` URL. An empty catalogue is expected before the owner publishes products.
+5. Create the private owner account against the same Neon database using the CLI below. Then sign in at `/admin`, publish real products, and test an order request.
 
-### Owner setup from your computer
+### Set up the private owner account
 
-The owner password is stored as a hash in the hosted database. No public setup page or default password exists. Set up the repository locally, and in a private terminal export the same database URL, Supabase settings and signing key, or put them in an ignored shell-compatible `.env.local` file:
+Use the source checkout and a private terminal. Set the hosted environment values privately, or put them in an ignored, trusted shell-compatible `.env.local` file. On macOS/Linux:
 
 ```bash
-# In the project directory; .env.local must contain only trusted KEY="value" lines.
 set -a
 . ./.env.local
 set +a
 .venv/bin/python app.py owner --username oluwadamilola
 ```
 
-Enter the password at the hidden prompt. The command initializes the same hosted database as Vercel. It can also reset the password later. Do not run `seed` against production. Do not commit `.env.local`.
-
-### Preview deployments
-
-Use a **separate Supabase project/database and bucket for Vercel Preview**, with its own `SECRET_KEY`. Set `PREVIEW=1` there only if you intentionally want the sample catalogue; seed via the CLI against that staging database. Keep preview deployments protected with Vercel's deployment protection. Do not share the production database with branches that run test orders or unreviewed code. Environment variables are not magically copied between Preview and Production.
-
-## 3. Connect the WhoGoHost domain
-
-1. In the Vercel project's **Settings → Domains**, add `shopwithlolaluxe.com.ng` and optionally `www.shopwithlolaluxe.com.ng`.
-2. Vercel will show the **exact DNS records for this project**. Copy those values, including any ownership-verification TXT record. Use those current values rather than a generic IP from an old guide.
-3. In WhoGoHost's domain DNS/Zone Editor, edit the records at the authoritative DNS provider. If WhoGoHost says DNS is managed elsewhere, use the provider listed in the domain's nameservers.
-4. Set the apex record (`@`) as instructed by Vercel, and the `www` CNAME if you added it. Remove only conflicting web-hosting A/AAAA/CNAME records for those names. Preserve MX, mail, SPF, DKIM and other TXT records.
-5. Keep WhoGoHost nameservers unless you deliberately choose Vercel-managed DNS. Changing the domain's nameservers is unnecessary for these record changes.
-6. Wait for propagation, then use Vercel's domain verification and certificate status. HTTPS certificates are handled by Vercel. Set the apex as the primary domain and redirect `www` consistently.
-7. Verify `https://shopwithlolaluxe.com.ng`, image loads, sign-in, signed-out `/api/orders` → 401 and a real-phone WhatsApp handoff to **+234 707 118 1050**.
+Enter a unique password at the hidden prompt. No default password or public setup endpoint exists. This command also resets the password later. No email is assumed. Do not seed sample data into the live database.
 
 ## 4. Preview on your own computer
 
@@ -75,24 +67,37 @@ cd lolaluxe
 python -m venv .venv
 # macOS/Linux:
 source .venv/bin/activate
-# Windows PowerShell instead:
-# .venv\Scripts\Activate.ps1
+# Windows PowerShell instead: .venv\Scripts\Activate.ps1
 pip install -r requirements-dev.txt
 python app.py seed
 python app.py owner --username oluwadamilola
 python app.py
 ```
 
-Open http://localhost:3000. The seed command only adds clearly labelled local sample products. No Supabase or Vercel account is required for this mode. If you have exported hosted environment variables in your shell, unset them before running a plain local preview. The source checkout's database and images are not uploaded to GitHub.
+Open **http://localhost:3000**. This mode uses SQLite and local photos and requires no hosted service. If hosted credentials were exported in this shell, unset them before starting a plain local preview. Sample products are labelled and are hidden from production checkout.
 
-## Budget and backups
+## 5. WhoGoHost: connect your domain
 
-Planning estimates, not live quotes: Vercel Pro is commonly around **US$20/user/month**; check current commercial-use terms (Hobby is intended for personal/non-commercial use). Supabase Free may be enough for staging but has quotas and inactivity limits; Pro commonly starts around **US$25/month**. Budget roughly **US$45/month** for the paid production combination before taxes, extra usage and WhoGoHost's domain renewal. Check the displayed plans before purchase. No paid plan has been purchased by the assistant.
+1. Vercel → Project → **Settings → Domains** → add `shopwithlolaluxe.com.ng` and, optionally, `www.shopwithlolaluxe.com.ng`.
+2. Copy **the exact DNS records Vercel displays for this project**, including any ownership-verification TXT record.
+3. In WhoGoHost's DNS/Zone Editor, update the apex (`@`) and `www` records accordingly. If its nameservers point elsewhere, edit records at that DNS provider instead.
+4. Remove only conflicting web-hosting A/AAAA/CNAME records for these names. Preserve MX, mail, SPF, DKIM and other TXT records. There is no need to change nameservers merely to point the website to Vercel.
+5. Wait for Vercel's domain validation and HTTPS certificate. Choose the apex as the primary domain and redirect `www` consistently.
+6. Check `https://shopwithlolaluxe.com.ng`, photos, owner sign-in, signed-out `/api/orders` → 401, and a real-phone WhatsApp handoff to **+234 707 118 1050**.
 
-Use Supabase's PostgreSQL backup/export facilities and separately back up the photo bucket: a database backup alone does not preserve the image objects. Verify available backup retention on the chosen plan and test restoration. Keep a copy of the signing key in a secret manager. The old `deploy/backup.py` script applies only to the alternative local SQLite/VPS deployment.
+## Plans, backups and timing
 
-## Access needed to finish remotely
+Neon and Cloudinary offer free allowances, but exact quotas, billing requirements and inactivity behavior must be checked in the chosen accounts. Do not rely on the unverified comparison table. Vercel's Hobby plan is intended for personal/non-commercial use; confirm its current commercial-use terms and displayed pricing before putting the live shop on it. No paid plan has been purchased by the assistant.
 
-The initial source is uploaded to GitHub. Live Vercel/Supabase provisioning, environment entry, domain verification and HTTPS remain pending until account/tool access is available. Never paste account passwords, service keys or database passwords in chat.
+Keep database and photo backups separately. A Neon database export does not include Cloudinary images. Keep the signing key in a secret manager. Use isolated credentials/database branches for preview deployments and protect staging access.
 
-For the shared cloud browser: open the right-hand panel, choose **+ → Desktop**, then **Take over** to sign in and **Return control** afterward. It is a separate browser from your personal computer; personal browser cookies are not shared. Browser control tools must also be enabled for the assistant. If Vercel was attached but no tools are available, reconnect it under Apps and tag Vercel again. This environment additionally needs allowed HTTPS access to Vercel/Supabase and TCP access to the selected PostgreSQL pooler to run live remote setup.
+Working estimate: **45–90 minutes after account access and credentials are available**, assuming no billing, verification, connectivity or unexpected deployment errors. DNS can take longer to propagate. This is not a guaranteed launch time.
+
+Code is on GitHub and local tests cover PostgreSQL transactions, signed upload configuration, cold-start persistence, credential isolation and checkout/payment behavior. Live Vercel/Neon/Cloudinary provisioning, actual provider API calls and WhoGoHost DNS still require account access and verification.
+
+<details>
+<summary>Browser-access diagnostic for support</summary>
+
+Environment: `ccarenv_b64_Y2NhcmVudl84MzQ0Nzg5N2UzNGM4MTkxODI3YmJlNzgzMzdhMWY5MA`. The desktop capability reports enabled with state unknown. No desktop JavaScript/browser-control tool or `open_in_codex` viewer-opening tool is exposed to this chat. Only the capability/status could be verified. The personal browser is not connected.
+
+</details>
