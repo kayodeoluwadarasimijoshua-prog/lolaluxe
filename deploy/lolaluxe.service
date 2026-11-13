@@ -1,0 +1,20 @@
+[Unit]
+Description=Lola's Luxe boutique
+After=network.target
+
+[Service]
+User=lolaluxe
+Group=lolaluxe
+WorkingDirectory=/opt/lolaluxe
+EnvironmentFile=/etc/lolaluxe.env
+ExecStart=/opt/lolaluxe/.venv/bin/gunicorn --workers 2 --threads 2 --bind 127.0.0.1:3000 --access-logfile - app:app
+Restart=on-failure
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lolaluxe
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+lolaluxe.com.ng {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:3000
+}
+www.lolaluxe.com.ng {
+    redir https://lolaluxe.com.ng{uri} permanent
+}
