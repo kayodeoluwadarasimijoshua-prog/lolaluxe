@@ -1454,3 +1454,11 @@ textarea {
 .hero-photo {
   object-position: center 10%;
 }
+
+/* Keep automatic collection controls usable on small screens. */
+.carousel-pause { border:1px solid var(--line, #ddd); background:transparent; color:inherit; padding:8px 12px; border-radius:20px; cursor:pointer; font:inherit; font-size:12px; }
+.hero-bottom { gap:12px; flex-wrap:wrap; }
+.hero-photo { background:#eee4d6; }
+
+.hero-photo.hero-accessory { object-fit:contain; object-position:center; background:#f3e7d7; }
+@media (max-width:700px) { .hero-bottom .tiny { display:none; } }

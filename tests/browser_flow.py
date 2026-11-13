@@ -36,6 +36,7 @@ with tempfile.TemporaryDirectory() as data:
         )
         context.grant_permissions(["clipboard-read", "clipboard-write"])
         page = context.new_page()
+        page.clock.install()
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))
         page.goto("http://127.0.0.1:3001/admin")
@@ -59,7 +60,39 @@ with tempfile.TemporaryDirectory() as data:
         page.locator(".wordmark").first.click()
         expect(page.locator('a[href^="/admin"]')).to_have_count(0)
         expect(page.locator(".hero-photo")).to_have_attribute(
-            "src", "/static/images/hero-editorial.webp"
+            "src", "/static/images/hero-editorial.webp?v=2"
+        )
+        page.clock.fast_forward(5100)
+        expect(page.locator(".hero-photo")).to_have_attribute(
+            "src", "/static/images/shoes.webp?v=2"
+        )
+        page.get_by_role("button", name="Pause automatic slideshow").click()
+        page.clock.fast_forward(11000)
+        expect(page.locator(".hero-photo")).to_have_attribute(
+            "src", "/static/images/shoes.webp?v=2"
+        )
+        page.get_by_role("button", name="Next collection").click()
+        expect(page.locator(".hero-photo")).to_have_attribute(
+            "src", "/static/images/bag.webp?v=2"
+        )
+        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+        for category in [
+            "Basic Tops",
+            "Two-Piece Sets",
+            "Gowns",
+            "Skirts",
+            "Bottoms",
+            "Slippers",
+            "Shoes",
+            "Bags",
+            "Adire",
+            "Jerseys",
+            "Scarves",
+            "Jeans",
+        ]:
+            expect(page.locator(f'[data-category="{category}"]')).to_have_count(1)
+        page.screenshot(
+            path=str(artifacts / "refreshed-home-mobile.png"), full_page=True
         )
         page.get_by_role("button", name="Bags", exact=True).click()
         expect(page.locator(".product")).to_have_count(1)

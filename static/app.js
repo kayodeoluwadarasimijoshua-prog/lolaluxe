@@ -64,6 +64,8 @@ let state = {
   sort: "curated",
   slide: 0,
 };
+let carouselTimer;
+let carouselPaused = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let checkoutBusy = false,
   renderVersion = 0;
 const saveCart = () => {
@@ -126,7 +128,7 @@ document.addEventListener("click", (e) => {
 });
 window.onpopstate = () => render();
 function shell(body, active = "shop") {
-  return `<div class="topbar">A LITTLE LUXURY, EVERY DAY. &nbsp; MADE FOR YOUR MOMENTS.</div><header class="header"><div class="header-inner"><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i><span class="brand-sub">THE CURATED BOUTIQUE</span></a><nav class="desktop-nav" aria-label="Shop"><a data-link href="/" class="${active === "shop" ? "active" : ""}">The boutique</a><a data-link href="/category/Bags">Bags</a><a data-link href="/category/Shoes">Shoes</a><a data-link href="/category/Clothes">Clothes</a><a data-link href="/category/Trousers">Trousers</a></nav><div class="header-actions"><a data-link href="/search" class="icon-btn" aria-label="Search products">${icon("search")}</a><a data-link href="/cart" class="icon-btn" aria-label="Your bag, ${count()} items">${icon("bag")}${count() ? `<span class="count">${count()}</span>` : ""}</a></div></div></header><main class="content">${body}</main><footer class="footer"><div class="content"><div class="footer-top"><div><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i></a><p>Thoughtfully chosen. Beautifully you.<br>Your little corner of everyday luxury.</p></div><div class="footer-links"><a data-link href="/category/Bags">Shop the edit</a><a href="https://wa.me/2347071181050" target="_blank" rel="noopener">Chat on WhatsApp ↗</a></div></div><div class="footer-bottom"><span>© ${new Date().getFullYear()} Lola’s Luxe. All rights reserved.</span><span>Curated with love in Nigeria &nbsp; · &nbsp; ₦ NGN</span></div></div></footer><nav class="mobile-nav" aria-label="Main navigation">${[
+  return `<div class="topbar">A LITTLE LUXURY, EVERY DAY. &nbsp; MADE FOR YOUR MOMENTS.</div><header class="header"><div class="header-inner"><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i><span class="brand-sub">THE CURATED BOUTIQUE</span></a><nav class="desktop-nav" aria-label="Shop"><a data-link href="/" class="${active === "shop" ? "active" : ""}">The boutique</a><a data-link href="/category/Bags">Bags</a><a data-link href="/category/Shoes">Shoes</a><a data-link href="/category/Basic%20Tops">Tops</a><a data-link href="/categories">All categories</a></nav><div class="header-actions"><a data-link href="/search" class="icon-btn" aria-label="Search products">${icon("search")}</a><a data-link href="/cart" class="icon-btn" aria-label="Your bag, ${count()} items">${icon("bag")}${count() ? `<span class="count">${count()}</span>` : ""}</a></div></div></header><main class="content">${body}</main><footer class="footer"><div class="content"><div class="footer-top"><div><a data-link href="/" class="wordmark">Lola’s Luxe<i> .</i></a><p>Thoughtfully chosen. Beautifully you.<br>Your little corner of everyday luxury.</p></div><div class="footer-links"><a data-link href="/category/Bags">Shop the edit</a><a href="https://wa.me/2347071181050" target="_blank" rel="noopener">Chat on WhatsApp ↗</a></div></div><div class="footer-bottom"><span>© ${new Date().getFullYear()} Lola’s Luxe. All rights reserved.</span><span>Curated with love in Nigeria &nbsp; · &nbsp; ₦ NGN</span></div></div></footer><nav class="mobile-nav" aria-label="Main navigation">${[
     ["home", "Boutique", "/", "shop"],
     ["grid", "Categories", "/categories", "categories"],
     ["bag", `Bag${count() ? " (" + count() + ")" : ""}`, "/cart", "cart"],
@@ -141,12 +143,12 @@ const heading = (t, sub = "") =>
   `<div class="page-heading"><h1>${t}</h1>${sub ? `<p>${sub}</p>` : ""}</div>`;
 function cards(ps) {
   return ps.length
-    ? `<div class="grid">${ps.map((p, i) => `<article class="product"><a data-link class="product-image" href="/product/${p.id}"><img src="${esc(p.images[0])}" alt="${esc(p.name)}" ${i > 3 ? 'loading="lazy"' : ""} width="360" height="480"><span class="badge">${p.sample ? "Preview sample" : p.variants.every((v) => v.available === 0) ? "Sold out" : "The luxe edit"}</span></a><div class="product-info"><div class="product-category">${esc(p.category)}</div><a data-link class="product-name" href="/product/${p.id}">${esc(p.name)}</a><span class="price">${naira(p.price)}</span><a data-link href="/product/${p.id}" class="quick-add icon-btn" aria-label="Choose options for ${esc(p.name)}">${icon("plus")}</a></div></article>`).join("")}</div>`
+    ? `<div class="grid">${ps.map((p, i) => `<article class="product"><a data-link class="product-image" href="/product/${p.id}"><img src="${esc(p.images[0].startsWith("/static/images/") ? p.images[0] + "?v=2" : p.images[0])}" alt="${esc(p.name)}" ${i > 3 ? 'loading="lazy"' : ""} width="360" height="480"><span class="badge">${p.sample ? "Preview sample" : p.variants.every((v) => v.available === 0) ? "Sold out" : "The luxe edit"}</span></a><div class="product-info"><div class="product-category">${esc(p.category)}</div><a data-link class="product-name" href="/product/${p.id}">${esc(p.name)}</a><span class="price">${naira(p.price)}</span><a data-link href="/product/${p.id}" class="quick-add icon-btn" aria-label="Choose options for ${esc(p.name)}">${icon("plus")}</a></div></article>`).join("")}</div>`
     : `<div class="empty"><h2>${state.query ? "No pieces found" : "A new edit is on its way"}</h2><p>${state.query ? "Try another search or explore a different category." : "Check back soon for something lovely."}</p><a class="btn secondary" data-link href="/">Explore the boutique</a></div>`;
 }
 const slides = [
   {
-    category: "Trousers",
+    category: "Bottoms",
     tag: "THE EVERYDAY MUSE",
     title: "Effortless style.<br><em>Beautifully you.</em>",
     desc: "Beautiful pieces for wherever life takes you. Meet your next wardrobe favourites.",
@@ -169,7 +171,7 @@ const slides = [
 ];
 function hero() {
   let s = slides[state.slide];
-  return `<div class="hero-heading"><span class="eyebrow">THE CURATED EDIT / ${String(state.slide + 1).padStart(2, "0")}</span><span class="tiny">Considered pieces. Endless possibilities.</span></div><section class="hero" aria-label="Featured collection"><div class="hero-copy"><span class="eyebrow">${s.tag}</span><h1>${s.title}</h1><p>${s.desc}</p><a data-link class="btn" href="/category/${s.category}">Shop ${s.category.toLowerCase()} ${icon("arrow")}</a></div><img class="hero-photo" src="/static/images/${s.image}.webp" alt="${s.category === "Trousers" ? "A woman wearing softly pleated blush trousers" : s.category + " collection preview"}"></section><div class="hero-bottom"><div class="dots">${slides.map((s, i) => `<button data-slide="${i}" class="${state.slide === i ? "active" : ""}" aria-label="Show Shop ${s.category}" aria-pressed="${state.slide === i}"></button>`).join("")}</div><div><span class="tiny">A wardrobe, thoughtfully curated.</span><button class="carousel-control" data-slide="${(state.slide + 2) % 3}" aria-label="Previous collection">${icon("left")}</button><button class="carousel-control" data-slide="${(state.slide + 1) % 3}" aria-label="Next collection">${icon("right")}</button></div></div>`;
+  return `<div class="hero-heading"><span class="eyebrow">THE CURATED EDIT / ${String(state.slide + 1).padStart(2, "0")}</span><span class="tiny">Considered pieces. Endless possibilities.</span></div><section class="hero" aria-label="Featured collection"><div class="hero-copy"><span class="eyebrow">${s.tag}</span><h1>${s.title}</h1><p>${s.desc}</p><a data-link class="btn" href="/category/${encodeURIComponent(s.category)}">Shop ${s.category.toLowerCase()} ${icon("arrow")}</a></div><img class="hero-photo ${["bag", "shoes"].includes(s.image) ? "hero-accessory" : ""}" src="/static/images/${s.image}.webp?v=2" alt="${s.image === "hero-editorial" ? "A woman wearing softly pleated blush trousers" : s.category + " collection preview"}"></section><div class="hero-bottom"><button class="carousel-pause" data-carousel-pause aria-label="${carouselPaused ? 'Start automatic slideshow' : 'Pause automatic slideshow'}">${carouselPaused ? "Play" : "Pause"}</button><div class="dots">${slides.map((s, i) => `<button data-slide="${i}" class="${state.slide === i ? "active" : ""}" aria-label="Show Shop ${s.category}" aria-pressed="${state.slide === i}"></button>`).join("")}</div><div><span class="tiny">A wardrobe, thoughtfully curated.</span><button class="carousel-control" data-slide="${(state.slide + slides.length - 1) % slides.length}" aria-label="Previous collection">${icon("left")}</button><button class="carousel-control" data-slide="${(state.slide + 1) % slides.length}" aria-label="Next collection">${icon("right")}</button></div></div>`;
 }
 function catalogueProducts() {
   let ps = state.products.filter(
@@ -189,29 +191,42 @@ function catalogue(category = "All", search = false) {
   const ps = catalogueProducts();
   const home = !search && path() === "/";
   return shell(
-    `${home ? `<div id="hero">${hero()}</div><div class="benefits"><span>${icon("spark")} Thoughtfully curated pieces</span><span>${icon("chat")} Personal WhatsApp checkout</span><span>${icon("shield")} A little luxury, made personal</span></div>` : heading(search ? "Find your next favourite" : esc(category), search ? "A little something you’ll love." : "Your wardrobe’s next chapter starts here.")} ${search ? `<div class="searchbox">${icon("search")}<input id="search" type="search" aria-label="Search products" placeholder="Search bags, shoes, clothing…" value="${esc(state.query)}"><button id="clear-search" aria-label="Clear search">${icon("close")}</button></div>` : ""}<section id="edit"><div class="section-heading"><div><span class="eyebrow">CHOSEN WITH YOU IN MIND</span><h2>${home ? "Your next favourites" : search ? "The search edit" : esc(category) + " edit"}</h2><p id="result-count" aria-live="polite">${ps.length} ${ps.length === 1 ? "piece" : "pieces"} to make your own</p></div>${state.session.preview ? '<span class="sample-notice">Preview catalogue</span>' : ""}</div><div class="filters"><div class="chips" aria-label="Product category">${["All", ...state.categories].map((c) => `<button class="chip ${c === category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === category}">${esc(c)}</button>`).join("")}</div><select id="sort" class="sort" aria-label="Sort products"><option value="curated">Curated for you</option><option value="low" ${state.sort === "low" ? "selected" : ""}>Price: low to high</option><option value="high" ${state.sort === "high" ? "selected" : ""}>Price: high to low</option></select></div><div id="product-grid">${cards(ps)}</div></section><section class="story"><div><div class="eyebrow">A PERSONAL TOUCH</div><h2>Your style. Your pace.</h2><p>Ask us on WhatsApp about paying in instalments.<br>Oluwadamilola is here to help you find your perfect piece.</p></div><a class="btn secondary" href="https://wa.me/2347071181050" target="_blank" rel="noopener">${icon("chat")} Let’s chat</a></section>`,
+    `${home ? `<div id="hero">${hero()}</div><div class="benefits"><span>${icon("spark")} Thoughtfully curated pieces</span><span>${icon("chat")} Personal WhatsApp checkout</span><span>${icon("shield")} A little luxury, made personal</span></div>` : heading(search ? "Find your next favourite" : esc(category), search ? "A little something you’ll love." : category === "Bottoms" ? "Joggers, capri pants, trousers and more." : "Your wardrobe’s next chapter starts here.")} ${search ? `<div class="searchbox">${icon("search")}<input id="search" type="search" aria-label="Search products" placeholder="Search bags, shoes, clothing…" value="${esc(state.query)}"><button id="clear-search" aria-label="Clear search">${icon("close")}</button></div>` : ""}<section id="edit"><div class="section-heading"><div><span class="eyebrow">CHOSEN WITH YOU IN MIND</span><h2>${home ? "Your next favourites" : search ? "The search edit" : esc(category) + " edit"}</h2><p id="result-count" aria-live="polite">${ps.length} ${ps.length === 1 ? "piece" : "pieces"} to make your own</p></div>${state.session.preview ? '<span class="sample-notice">Preview catalogue</span>' : ""}</div><div class="filters"><div class="chips" aria-label="Product category">${["All", ...state.categories].map((c) => `<button class="chip ${c === category ? "active" : ""}" data-category="${esc(c)}" aria-pressed="${c === category}">${esc(c)}</button>`).join("")}</div><select id="sort" class="sort" aria-label="Sort products"><option value="curated">Curated for you</option><option value="low" ${state.sort === "low" ? "selected" : ""}>Price: low to high</option><option value="high" ${state.sort === "high" ? "selected" : ""}>Price: high to low</option></select></div><div id="product-grid">${cards(ps)}</div></section><section class="story"><div><div class="eyebrow">A PERSONAL TOUCH</div><h2>Your style. Your pace.</h2><p>Ask us on WhatsApp about paying in instalments.<br>Oluwadamilola is here to help you find your perfect piece.</p></div><a class="btn secondary" href="https://wa.me/2347071181050" target="_blank" rel="noopener">${icon("chat")} Let’s chat</a></section>`,
     category === "All" ? "shop" : "categories",
   );
 }
 function bindCatalogue() {
   let h = $("#hero");
   if (h) {
+    const show = (index) => {
+      state.slide = (index + slides.length) % slides.length;
+      const focused = document.activeElement;
+      const selector = focused?.matches("[data-slide]") ? `[data-slide="${focused.dataset.slide}"]` : focused?.matches("[data-carousel-pause]") ? "[data-carousel-pause]" : null;
+      h.innerHTML = hero();
+      if (selector) h.querySelector(selector)?.focus({preventScroll: true});
+    };
+    const schedule = () => {
+      clearInterval(carouselTimer);
+      carouselTimer = setInterval(() => {
+        if (!carouselPaused && !document.hidden && !h.contains(document.activeElement) && !(matchMedia("(hover: hover)").matches && h.matches(":hover"))) show(state.slide + 1);
+      }, 5000);
+    };
     h.onclick = (e) => {
-      let b = e.target.closest("[data-slide]");
-      if (b) {
-        state.slide = +b.dataset.slide;
-        h.innerHTML = hero();
+      if (e.target.closest("[data-carousel-pause]")) {
+        carouselPaused = !carouselPaused;
+        show(state.slide);
+        schedule();
       }
+      const button = e.target.closest("[data-slide]");
+      if (button) { show(+button.dataset.slide); schedule(); }
     };
     let start;
     h.ontouchstart = (e) => (start = e.touches[0].clientX);
     h.ontouchend = (e) => {
-      let diff = e.changedTouches[0].clientX - start;
-      if (Math.abs(diff) > 40) {
-        state.slide = (state.slide + (diff < 0 ? 1 : 2)) % 3;
-        h.innerHTML = hero();
-      }
+      const diff = e.changedTouches[0].clientX - start;
+      if (Math.abs(diff) > 40) { show(state.slide + (diff < 0 ? 1 : -1)); schedule(); }
     };
+    schedule();
   }
   $$("[data-category]").forEach(
     (b) =>
@@ -257,7 +272,7 @@ function bindCatalogue() {
 }
 function detail(p) {
   return shell(
-    `<div class="breadcrumb"><a data-link href="/">Boutique</a> &nbsp; / &nbsp; <a data-link href="/category/${esc(p.category)}">${esc(p.category)}</a> &nbsp; / &nbsp; ${esc(p.name)}</div><div class="detail"><section><img class="gallery-main" id="main-photo" src="${esc(p.images[0])}" alt="${esc(p.name)}"><div class="thumbs">${p.images.map((im, i) => `<button data-photo="${esc(im)}" aria-label="View photo ${i + 1}"><img src="${esc(im)}" alt=""></button>`).join("")}</div></section><section class="details-copy"><span class="eyebrow">${esc(p.category)} · THE LOLA’S LUXE EDIT</span><h1>${esc(p.name)}</h1><div class="price">${naira(p.price)}</div>${p.sample ? '<p class="sample-notice">Preview sample — not a live product</p>' : ""}<p class="description">${esc(p.description)}</p><label class="field">Choose size & colour<select id="variant" aria-label="Choose size and colour">${p.variants.map((v) => `<option value="${v.id}" ${v.available === 0 ? "disabled" : ""}>${esc(v.size || "One size")} / ${esc(v.colour || "Default")} ${v.available === 0 ? "— Unavailable" : ""}</option>`).join("")}</select></label><p id="availability" class="availability"></p><label class="field">Quantity<div class="qty"><button id="minus" aria-label="Reduce quantity">−</button><span id="qty">1</span><button id="plus" aria-label="Increase quantity">+</button></div></label><button class="btn full" id="add-cart" ${p.variants.every((v) => v.available < 1) ? "disabled" : ""}>${icon("bag")} Add to bag</button><p class="tiny">Product subtotal only. Any delivery fee is agreed on WhatsApp.</p><div class="note">Ask us on WhatsApp about paying in instalments.</div><div class="detail-perks"><details><summary>Pickup & delivery</summary><p>Pickup details are shared privately. For delivery, Oluwadamilola arranges a third-party rider or driver and confirms the fee with you on WhatsApp.</p></details><details><summary>Fit, fabric & care</summary><p>Need a closer look or help choosing a size? <a class="text-btn" href="https://wa.me/2347071181050" target="_blank" rel="noopener">Ask Oluwadamilola</a> before placing your order.</p></details></div></section></div>`,
+    `<div class="breadcrumb"><a data-link href="/">Boutique</a> &nbsp; / &nbsp; <a data-link href="/category/${esc(p.category)}">${esc(p.category)}</a> &nbsp; / &nbsp; ${esc(p.name)}</div><div class="detail"><section><img class="gallery-main" id="main-photo" src="${esc(p.images[0].startsWith("/static/images/") ? p.images[0] + "?v=2" : p.images[0])}" alt="${esc(p.name)}"><div class="thumbs">${p.images.map((im, i) => `<button data-photo="${esc(im.startsWith("/static/images/") ? im + "?v=2" : im)}" aria-label="View photo ${i + 1}"><img src="${esc(im.startsWith("/static/images/") ? im + "?v=2" : im)}" alt=""></button>`).join("")}</div></section><section class="details-copy"><span class="eyebrow">${esc(p.category)} · THE LOLA’S LUXE EDIT</span><h1>${esc(p.name)}</h1><div class="price">${naira(p.price)}</div>${p.sample ? '<p class="sample-notice">Preview sample — not a live product</p>' : ""}<p class="description">${esc(p.description)}</p><label class="field">Choose size & colour<select id="variant" aria-label="Choose size and colour">${p.variants.map((v) => `<option value="${v.id}" ${v.available === 0 ? "disabled" : ""}>${esc(v.size || "One size")} / ${esc(v.colour || "Default")} ${v.available === 0 ? "— Unavailable" : ""}</option>`).join("")}</select></label><p id="availability" class="availability"></p><label class="field">Quantity<div class="qty"><button id="minus" aria-label="Reduce quantity">−</button><span id="qty">1</span><button id="plus" aria-label="Increase quantity">+</button></div></label><button class="btn full" id="add-cart" ${p.variants.every((v) => v.available < 1) ? "disabled" : ""}>${icon("bag")} Add to bag</button><p class="tiny">Product subtotal only. Any delivery fee is agreed on WhatsApp.</p><div class="note">Ask us on WhatsApp about paying in instalments.</div><div class="detail-perks"><details><summary>Pickup & delivery</summary><p>Pickup details are shared privately. For delivery, Oluwadamilola arranges a third-party rider or driver and confirms the fee with you on WhatsApp.</p></details><details><summary>Fit, fabric & care</summary><p>Need a closer look or help choosing a size? <a class="text-btn" href="https://wa.me/2347071181050" target="_blank" rel="noopener">Ask Oluwadamilola</a> before placing your order.</p></details></div></section></div>`,
   );
 }
 function bindDetail(p) {
@@ -512,7 +527,7 @@ function ordersView() {
 }
 function adminProductList(ps) {
   return ps.length
-    ? `<div class="admin-list">${ps.map((p) => `<a data-link class="panel" href="/admin/products/${p.id}"><img src="${esc(p.images[0])}" alt=""><div class="grow"><h3>${esc(p.name)}</h3><span class="tiny">${esc(p.category)} · ${p.variants.reduce((s, v) => s + v.available, 0)} available${p.sample ? " · Preview sample" : ""}</span></div><span class="price">${naira(p.price)}</span><span class="pill">${p.published ? "Published" : "Draft"}</span>${icon("right")}</a>`).join("")}</div>`
+    ? `<div class="admin-list">${ps.map((p) => `<a data-link class="panel" href="/admin/products/${p.id}"><img src="${esc(p.images[0].startsWith("/static/images/") ? p.images[0] + "?v=2" : p.images[0])}" alt=""><div class="grow"><h3>${esc(p.name)}</h3><span class="tiny">${esc(p.category)} · ${p.variants.reduce((s, v) => s + v.available, 0)} available${p.sample ? " · Preview sample" : ""}</span></div><span class="price">${naira(p.price)}</span><span class="pill">${p.published ? "Published" : "Draft"}</span>${icon("right")}</a>`).join("")}</div>`
     : '<div class="empty"><h2>Make room for something lovely</h2><p>Add your first product to begin.</p></div>';
 }
 function productsView() {
@@ -544,7 +559,7 @@ function photosView() {
   return editingProduct.images
     .map(
       (im, i) =>
-        `<div><img src="${esc(im)}" alt="Product photo ${i + 1}"><button type="button" class="icon-btn" data-remove-photo="${i}" aria-label="Remove photo ${i + 1}">${icon("close")}</button></div>`,
+        `<div><img src="${esc(im.startsWith("/static/images/") ? im + "?v=2" : im)}" alt="Product photo ${i + 1}"><button type="button" class="icon-btn" data-remove-photo="${i}" aria-label="Remove photo ${i + 1}">${icon("close")}</button></div>`,
     )
     .join("");
 }
@@ -800,6 +815,7 @@ function bindOrder(o) {
     };
 }
 async function render() {
+  clearInterval(carouselTimer);
   let version = ++renderVersion;
   let p = path();
   try {
@@ -911,7 +927,7 @@ async function render() {
           "Find your kind of lovely",
           "Explore the boutique, one edit at a time.",
         ) +
-          `<div class="grid">${state.categories.map((c, i) => `<a data-link href="/category/${encodeURIComponent(c)}" class="panel"><span class="eyebrow">THE ${esc(c.toUpperCase())} EDIT</span><h2>${esc(c)}</h2><span class="text-btn">Discover ${icon("arrow")}</span></a>`).join("")}</div>`,
+          `<div class="grid">${state.categories.map((c, i) => `<a data-link href="/category/${encodeURIComponent(c)}" class="panel"><span class="eyebrow">THE ${esc(c.toUpperCase())} EDIT</span><h2>${esc(c)}</h2>${c === "Bottoms" ? "<p>Joggers, capri pants, trousers and more.</p>" : ""}<span class="text-btn">Discover ${icon("arrow")}</span></a>`).join("")}</div>`,
         "categories",
       );
     } else if (p === "/" || p === "/search" || p.startsWith("/category/")) {

@@ -143,8 +143,32 @@ def create_app(config=None):
         CREATE TABLE IF NOT EXISTS login_attempts(ip TEXT,created TEXT);
         """
         )
-        for c in ["Bags", "Shoes", "Clothes", "Trousers"]:
+        for c in [
+            "Basic Tops",
+            "Two-Piece Sets",
+            "Gowns",
+            "Skirts",
+            "Bottoms",
+            "Slippers",
+            "Shoes",
+            "Bags",
+            "Adire",
+            "Jerseys",
+            "Scarves",
+            "Jeans",
+            "Clothes",
+            "Trousers",
+        ]:
             db().execute("INSERT OR IGNORE INTO categories(name) VALUES(?)", (c,))
+        for sample_id, category in [
+            ("sample-trousers", "Bottoms"),
+            ("sample-dress", "Gowns"),
+            ("sample-denim", "Jeans"),
+        ]:
+            db().execute(
+                "UPDATE products SET category=? WHERE id=? AND sample=1",
+                (category, sample_id),
+            )
         db().commit()
 
     def owner(fn):
@@ -966,7 +990,7 @@ if __name__ == "__main__":
             (
                 "sample-trousers",
                 "Lekki Pleated Trousers",
-                "Trousers",
+                "Bottoms",
                 31500,
                 "trousers",
                 "UK 8",
@@ -993,7 +1017,7 @@ if __name__ == "__main__":
             (
                 "sample-dress",
                 "Eniola Satin Slip",
-                "Clothes",
+                "Gowns",
                 38500,
                 "dress",
                 "UK 10",
@@ -1002,7 +1026,7 @@ if __name__ == "__main__":
             (
                 "sample-denim",
                 "Eko Flared Denims",
-                "Trousers",
+                "Jeans",
                 29000,
                 "denim",
                 "28",

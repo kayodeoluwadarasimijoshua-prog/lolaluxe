@@ -31,3 +31,12 @@ The requested GPT-6 Astra review inspected the source and reproduced failures in
 - Stock conflicts need owner resolution before fulfilment. Recording verified money does not promise stock allocation. This release does not track shipping, returns or refunds; payment corrections can restore available stock and the owner must reconcile physical inventory with fulfilment history.
 - Production Vercel environment values, live provider connectivity, owner-account initialization, real-phone WhatsApp sending, the purchased domain and HTTPS still need live verification. Local tests are not evidence that those account settings are complete.
 - No source database migration is required for this update. Existing hosted credentials and records remain in place.
+
+
+## Storefront refresh — 13 November 2026
+
+Replaced all seven remaining low-resolution preview photos with generated high-resolution WebP artwork (1024 px or wider); the previously regenerated editorial hero remains. Images remain illustrative preview samples, not real inventory. Accessories use contain sizing in the banner to avoid cropping bags or shoes. Versioned static URLs refresh cached artwork and frontend files.
+
+Homepage collections advance every five seconds with pause/play, manual arrows, touch swipes, hover/focus protection and reduced-motion default. Route changes clear the timer. Added Basic Tops, Two-Piece Sets, Gowns, Skirts, Bottoms (joggers, capri pants and trousers), Slippers, Adire, Jerseys, Scarves and Jeans alongside Shoes and Bags; legacy categories remain for existing merchandise. Only sample trousers, dress and denim are recategorized automatically.
+
+Validation: 40 backend tests passed on SQLite/PostgreSQL and storage fixtures. Mobile browser flow passed carousel rotation/pause/manual controls, category availability, upload, checkout, payment retry recovery, dashboard totals and signed-out access checks. No browser errors or horizontal overflow. Live Vercel deployment status must be checked separately.
