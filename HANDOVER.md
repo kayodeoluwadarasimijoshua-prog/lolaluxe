@@ -2,7 +2,7 @@
 
 ## Publish a product
 
-1. Open `lolaluxe.com.ng/admin` and sign in with your private username and password.
+1. Open `shopwithlolaluxe.com.ng/admin` and sign in with your private username and password.
 2. Tap **Products → Add product**.
 3. Enter a name, category, naira price and description. Upload photos from your phone.
 4. Add a row for every size + colour combination. Stock is the quantity for that exact row. Black size 38 and brown size 38 have separate stock. Zero means unavailable.

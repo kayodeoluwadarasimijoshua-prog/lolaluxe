@@ -1,0 +1,10 @@
+.git
+.venv
+.env*
+!.env.example
+data
+artifacts
+tests
+.pytest_cache
+__pycache__
+deploy

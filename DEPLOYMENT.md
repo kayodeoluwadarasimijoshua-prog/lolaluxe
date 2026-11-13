@@ -1,3 +1,5 @@
+> **Current deployment target: Vercel.** Follow [VERCEL.md](VERCEL.md) for shopwithlolaluxe.com.ng. This document retains the alternative VPS/SQLite procedure; it is not the Vercel setup.
+
 # Deployment and operating budget
 
 ## Suggested low-maintenance setup
@@ -13,7 +15,7 @@ Planning estimates, not live provider quotes:
 | Image storage | US$0 additional within VPS disk; 500 × 200 KB images ≈ 100 MB |
 | Encrypted external backups | US$1–3/month at small scale; verify provider minimums and egress |
 | Caddy TLS certificates | US$0 |
-| `lolaluxe.com.ng` registration/renewal | Registrar-specific yearly NGN price; confirm ownership, VAT and renewal quote |
+| `shopwithlolaluxe.com.ng` registration/renewal | Registrar-specific yearly NGN price; confirm ownership, VAT and renewal quote |
 
 Budget approximately **US$6–11/month plus domain**, before tax and currency conversion. A managed host with a persistent disk is an alternative, typically budget US$10–20+/month; check its volume and backup costs. This is not a multi-region deployment. Backups are necessary to protect local database and photos.
 
@@ -28,13 +30,13 @@ Budget approximately **US$6–11/month plus domain**, before tax and currency co
 
 No hosting account, domain access, DNS changes or public deployment has been performed in this workspace.
 
-## DNS and HTTPS checklist for lolaluxe.com.ng
+## DNS and HTTPS checklist for shopwithlolaluxe.com.ng
 
 - In the authoritative DNS provider, point apex `A` to the VPS IPv4. Add `AAAA` only if IPv6 actually works on the host.
-- Add `www` as a CNAME to `lolaluxe.com.ng` (or an A record to the host). Preserve existing mail/MX/TXT records.
-- Confirm `dig +short lolaluxe.com.ng A` and `dig +short www.lolaluxe.com.ng` resolve correctly from external networks.
+- Add `www` as a CNAME to `shopwithlolaluxe.com.ng` (or an A record to the host). Preserve existing mail/MX/TXT records.
+- Confirm `dig +short shopwithlolaluxe.com.ng A` and `dig +short www.shopwithlolaluxe.com.ng` resolve correctly from external networks.
 - Keep TCP 80 and 443 reachable for certificate issuance. Caddy obtains and renews TLS automatically once DNS points here.
-- Check `curl -I http://lolaluxe.com.ng` redirects to HTTPS. Check `curl -I https://lolaluxe.com.ng` succeeds with a valid certificate, and `www` redirects to the canonical apex.
+- Check `curl -I http://shopwithlolaluxe.com.ng` redirects to HTTPS. Check `curl -I https://shopwithlolaluxe.com.ng` succeeds with a valid certificate, and `www` redirects to the canonical apex.
 - On a real phone, confirm no mixed content, images load, `/admin` sign-in works, and an anonymous `/api/orders` returns 401. Check the auth cookie is Secure, HttpOnly and SameSite=Lax.
 - Verify WhatsApp opens **+234 707 118 1050**, the saved reference, item options, quantities and subtotal. The customer must tap Send. No web callback confirms sending.
 - Confirm Caddy renewal status/logs, host disk alerts, restart behavior and successful restore of a backup before launch.

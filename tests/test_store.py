@@ -5,9 +5,17 @@ from werkzeug.security import generate_password_hash
 from app import create_app
 
 
-@pytest.fixture
-def store(tmp_path):
-    app = create_app({"TESTING": True, "DATA_DIR": str(tmp_path), "PREVIEW": True})
+@pytest.fixture(params=["sqlite", "postgres"])
+def store(tmp_path, request):
+    url = request.getfixturevalue("postgres_url") if request.param == "postgres" else ""
+    app = create_app(
+        {
+            "TESTING": True,
+            "DATA_DIR": str(tmp_path),
+            "PREVIEW": True,
+            "DATABASE_URL": url,
+        }
+    )
     with app.app_context():
         app.db().execute(
             "INSERT INTO owner VALUES(1,?,?)",
@@ -289,7 +297,12 @@ def test_image_upload_persistence_and_production_samples(store):
     assert image.status_code == 200
     assert Image.open(io.BytesIO(image.data)).width == 1600
     other = create_app(
-        {"TESTING": True, "DATA_DIR": app.config["DATA_DIR"], "PREVIEW": False}
+        {
+            "TESTING": True,
+            "DATA_DIR": app.config["DATA_DIR"],
+            "PREVIEW": False,
+            "DATABASE_URL": app.config["DATABASE_URL"],
+        }
     )
     assert other.test_client().get("/api/products").json[0]["price"] == 1200000
     with app.app_context():
@@ -312,3 +325,52 @@ def test_overdue_excess_and_date_filters(store):
     assert o["excess"] == 200000 and o["status"] == "Paid"
     assert c.get("/api/dashboard?start=2099-01-01").json["paid_orders"] == 0
     assert c.get("/api/dashboard?end=2000-01-01").json["paid_orders"] == 0
+
+
+def test_simultaneous_checkout_and_payment_retries(store):
+    from concurrent.futures import ThreadPoolExecutor
+
+    app, c, post, p, checkout, payment = store
+    checkout_key = str(uuid.uuid4())
+    payload = {
+        "key": checkout_key,
+        "items": [
+            {"product_id": p["id"], "variant_id": "brown38", "qty": 1, "price": 1200000}
+        ],
+        "fulfilment": "Pickup",
+    }
+
+    def submit(url, body):
+        client = app.test_client()
+        csrf = client.get("/api/session").json["csrf"]
+        assert (
+            client.post(
+                "/api/login",
+                json={"username": "owner", "password": "test-only-password"},
+                headers={"X-CSRF-Token": csrf},
+            ).status_code
+            == 200
+        )
+        csrf = client.get("/api/session").json["csrf"]
+        response = client.post("/api/" + url, json=body, headers={"X-CSRF-Token": csrf})
+        assert response.status_code == 200, response.get_data(as_text=True)
+        return response.json
+
+    with ThreadPoolExecutor(2) as pool:
+        results = list(pool.map(lambda _: submit("checkout", payload), range(2)))
+    assert results[0]["reference"] == results[1]["reference"]
+    ref = results[0]["reference"]
+    key = str(uuid.uuid4())
+    transfer = {
+        "key": key,
+        "products": 1200000,
+        "delivery": 0,
+        "received": "2026-11-13",
+        "note": "Verified full transfer",
+    }
+    with ThreadPoolExecutor(2) as pool:
+        results = list(
+            pool.map(lambda _: submit(f"orders/{ref}/payments", transfer), range(2))
+        )
+    assert len(results[0]["payments"]) == len(results[1]["payments"]) == 1
+    assert c.get("/api/dashboard").json["product_sales"] == 1200000

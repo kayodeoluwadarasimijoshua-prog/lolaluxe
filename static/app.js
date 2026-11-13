@@ -518,7 +518,7 @@ function productForm(p) {
   };
   let x = editingProduct;
   return adminShell(
-    `<form class="admin-form panel" id="product-form"><h2>${p ? "Edit your piece" : "A new favourite"}</h2>${p?.sample ? '<p class="note">This is a preview sample. Create a new product for your live catalogue.</p>' : ""}<div id="form-error"></div><label class="field">Product name<input name="name" required maxlength="150" value="${esc(x.name)}"></label><div class="form-grid"><label class="field">Category<select name="category" aria-label="Category">${state.categories.map((c) => `<option ${c === x.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label><label class="field">Price (₦)<input name="price" type="number" step="0.01" min="0.01" required value="${x.price / 100 || ""}"></label></div><label class="field">Description<textarea name="description" maxlength="5000">${esc(x.description)}</textarea></label><label class="field">Photos (up to 8)<input id="upload" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><p class="tiny">Photos are compressed and stored privately on the host, then served for your catalogue.</p><div id="photos" class="photo-list">${photosView()}</div><div class="spacer"></div><h3>Size & colour combinations</h3><p class="tiny">Stock applies to each exact combination. Set stock to 0 for sold out. Existing reservations reduce available stock.</p><div class="variant-row tiny"><span>Size</span><span>Colour</span><span>Stock</span><span></span></div><div id="variants">${x.variants.map(variantRow).join("")}</div><button class="text-btn" id="add-variant" type="button">+ Add combination</button><label class="check"><input type="checkbox" name="published" ${x.published ? "checked" : ""}> Publish in the boutique</label><button class="btn" id="save-product">Save product</button> <a data-link href="/admin/products" class="text-btn">Back to products</a></form>`,
+    `<form class="admin-form panel" id="product-form"><h2>${p ? "Edit your piece" : "A new favourite"}</h2>${p?.sample ? '<p class="note">This is a preview sample. Create a new product for your live catalogue.</p>' : ""}<div id="form-error"></div><label class="field">Product name<input name="name" required maxlength="150" value="${esc(x.name)}"></label><div class="form-grid"><label class="field">Category<select name="category" aria-label="Category">${state.categories.map((c) => `<option ${c === x.category ? "selected" : ""}>${esc(c)}</option>`).join("")}</select></label><label class="field">Price (₦)<input name="price" type="number" step="0.01" min="0.01" required value="${x.price / 100 || ""}"></label></div><label class="field">Description<textarea name="description" maxlength="5000">${esc(x.description)}</textarea></label><label class="field">Photos (up to 8)<input id="upload" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><p class="tiny">Photos are optimized and stored for your catalogue.</p><div id="photos" class="photo-list">${photosView()}</div><div class="spacer"></div><h3>Size & colour combinations</h3><p class="tiny">Stock applies to each exact combination. Set stock to 0 for sold out. Existing reservations reduce available stock.</p><div class="variant-row tiny"><span>Size</span><span>Colour</span><span>Stock</span><span></span></div><div id="variants">${x.variants.map(variantRow).join("")}</div><button class="text-btn" id="add-variant" type="button">+ Add combination</button><label class="check"><input type="checkbox" name="published" ${x.published ? "checked" : ""}> Publish in the boutique</label><button class="btn" id="save-product">Save product</button> <a data-link href="/admin/products" class="text-btn">Back to products</a></form>`,
     "products",
   );
 }
@@ -530,6 +530,42 @@ function photosView() {
     )
     .join("");
 }
+// Resize on the phone before upload so original camera files fit Vercel's body limit.
+async function preparePhoto(file) {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
+    throw Error("Choose a JPG, PNG or WebP photo.");
+  if (file.size > 12 * 1024 * 1024)
+    throw Error("Choose a photo smaller than 12 MB.");
+  let image;
+  try {
+    image = await createImageBitmap(file);
+  } catch {
+    throw Error(
+      "This photo could not be opened. Choose another JPG, PNG or WebP.",
+    );
+  }
+  try {
+    if (image.width * image.height > 24000000)
+      throw Error("Choose a photo under 24 megapixels.");
+    const scale = Math.min(1, 1600 / Math.max(image.width, image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fffdf9";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.86),
+    );
+    if (!blob || blob.size > 3 * 1024 * 1024)
+      throw Error("Photo is too large to send. Please choose a smaller image.");
+    return blob;
+  } finally {
+    image.close();
+  }
+}
+
 function bindProductForm() {
   const photoBind = () =>
     $$("[data-remove-photo]").forEach(
@@ -560,7 +596,7 @@ function bindProductForm() {
     try {
       for (let f of files) {
         let form = new FormData();
-        form.append("photo", f);
+        form.append("photo", await preparePhoto(f), "product.jpg");
         let r = await api("upload", form);
         editingProduct.images.push(r.url);
       }

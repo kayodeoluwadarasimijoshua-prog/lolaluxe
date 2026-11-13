@@ -1,6 +1,12 @@
 # Build report
 
-## Delivered
+## Vercel update
+
+Source was pushed to `kayodeoluwadarasimijoshua-prog/lolaluxe` on GitHub. The domain is now **shopwithlolaluxe.com.ng**. Vercel configuration, PostgreSQL transactions, private-schema protections and Supabase photo storage are implemented. Local SQLite preview remains supported. Hosted deployment and DNS remain pending account/network access. See [VERCEL.md](VERCEL.md) for setup.
+
+The expanded suite passes **27 tests** against both real local PostgreSQL and SQLite, concurrent duplicate checkout/payment requests, external storage transport, stable owner sessions across cold starts, and zero reliance on local writable files in the serverless configuration. The phone browser acceptance flow also passes after the Vercel adaptations. Supabase HTTP upload transport was tested with a stub; a live Supabase account and Vercel build/deployment have not yet been available to verify.
+
+## Original delivery
 
 Working source in `/workspace/lolaluxe`. A local preview runs at http://localhost:3000. No production deployment or DNS change has been made.
 

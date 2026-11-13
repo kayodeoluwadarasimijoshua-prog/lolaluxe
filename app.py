@@ -1,4 +1,4 @@
-import os, json, sqlite3, secrets, hashlib, io
+import os, json, secrets, hashlib, io
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -14,6 +14,7 @@ from flask import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from PIL import Image, ImageOps, UnidentifiedImageError
+from persistence import connect_database, SupabasePhotos, PRODUCT_COLUMNS
 
 ROOT = Path(__file__).parent
 
@@ -38,32 +39,71 @@ def integer(v, minimum=0, maximum=10**12):
 
 def create_app(config=None):
     app = Flask(__name__)
+    vercel = os.getenv("VERCEL") == "1"
     app.config.update(
         DATA_DIR=os.getenv("DATA_DIR", str(ROOT / "data")),
-        PREVIEW=os.getenv("PREVIEW", "1") == "1",
+        PREVIEW=os.getenv("PREVIEW", "0" if vercel else "1") == "1",
+        DATABASE_URL=os.getenv("DATABASE_URL", ""),
+        SUPABASE_URL=os.getenv("SUPABASE_URL", ""),
+        SUPABASE_SERVICE_ROLE_KEY=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+        SUPABASE_STORAGE_BUCKET=os.getenv("SUPABASE_STORAGE_BUCKET", "product-images"),
+        SECRET_KEY=os.getenv("SECRET_KEY"),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
-        SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "0") == "1",
+        SESSION_COOKIE_SECURE=os.getenv("COOKIE_SECURE", "1" if vercel else "0") == "1",
         MAX_CONTENT_LENGTH=12 * 1024 * 1024,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
     )
     if config:
         app.config.update(config)
+    if vercel:
+        missing = [
+            name
+            for name in (
+                "DATABASE_URL",
+                "SUPABASE_URL",
+                "SUPABASE_SERVICE_ROLE_KEY",
+                "SECRET_KEY",
+            )
+            if not app.config.get(name)
+        ]
+        if missing:
+            raise RuntimeError(
+                "Configure Vercel environment variables: " + ", ".join(missing)
+            )
+        if not app.config["DATABASE_URL"].startswith(("postgres://", "postgresql://")):
+            raise RuntimeError("Vercel requires a persistent PostgreSQL DATABASE_URL.")
+        if len(app.config["SECRET_KEY"]) < 32:
+            raise RuntimeError("SECRET_KEY must contain at least 32 characters.")
     data = Path(app.config["DATA_DIR"])
-    data.mkdir(parents=True, exist_ok=True)
-    (data / "uploads").mkdir(exist_ok=True)
-    key = data / "session.key"
-    if not key.exists():
-        key.write_text(secrets.token_hex(32))
-        key.chmod(0o600)
-    app.secret_key = os.getenv("SECRET_KEY") or key.read_text()
+    remote_photos = None
+    if app.config["SUPABASE_URL"] and app.config["SUPABASE_SERVICE_ROLE_KEY"]:
+        remote_photos = SupabasePhotos(
+            app.config["SUPABASE_URL"],
+            app.config["SUPABASE_SERVICE_ROLE_KEY"],
+            app.config["SUPABASE_STORAGE_BUCKET"],
+        )
+    if (
+        not remote_photos
+        or not app.config["DATABASE_URL"]
+        or not app.config["SECRET_KEY"]
+    ):
+        data.mkdir(parents=True, exist_ok=True)
+    if not remote_photos:
+        (data / "uploads").mkdir(exist_ok=True)
+    if not app.config["SECRET_KEY"]:
+        key = data / "session.key"
+        try:
+            with key.open("x") as f:
+                f.write(secrets.token_hex(32))
+            key.chmod(0o600)
+        except FileExistsError:
+            pass
+        app.secret_key = key.read_text()
 
     def db():
         if "db" not in g:
-            g.db = sqlite3.connect(data / "store.db", timeout=15)
-            g.db.row_factory = sqlite3.Row
-            g.db.execute("PRAGMA foreign_keys=ON")
-            g.db.execute("PRAGMA journal_mode=WAL")
+            g.db = connect_database(app.config["DATABASE_URL"], data / "store.db")
         return g.db
 
     app.db = db
@@ -86,7 +126,7 @@ def create_app(config=None):
         """
         )
         for c in ["Bags", "Shoes", "Clothes", "Trousers"]:
-            db().execute("INSERT OR IGNORE INTO categories VALUES(?)", (c,))
+            db().execute("INSERT OR IGNORE INTO categories(name) VALUES(?)", (c,))
         db().commit()
 
     def owner(fn):
@@ -119,8 +159,9 @@ def create_app(config=None):
         res.headers["X-Content-Type-Options"] = "nosniff"
         res.headers["X-Frame-Options"] = "DENY"
         res.headers["Referrer-Policy"] = "same-origin"
+        image_origin = remote_photos.url if remote_photos else ""
         res.headers["Content-Security-Policy"] = (
-            "default-src 'self'; img-src 'self' blob: data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+            f"default-src 'self'; img-src 'self' blob: data: {image_origin}; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
         )
         if request.path.startswith("/api/"):
             res.headers["Cache-Control"] = "no-store"
@@ -148,6 +189,7 @@ def create_app(config=None):
                 )
                 .fetchone()[0]
             )
+            held = int(held)
             v["available"] = max(0, v["stock"] - held)
             v["reserved"] = held
         return p
@@ -298,7 +340,7 @@ def create_app(config=None):
         name = str(request.get_json().get("name", "")).strip()
         if not 1 <= len(name) <= 40:
             raise ValueError("Category must have 1–40 characters.")
-        db().execute("INSERT OR IGNORE INTO categories VALUES(?)", (name,))
+        db().execute("INSERT OR IGNORE INTO categories(name) VALUES(?)", (name,))
         db().commit()
         return jsonify(ok=True)
 
@@ -339,7 +381,11 @@ def create_app(config=None):
             or not 1 <= len(images) <= 8
             or any(
                 not isinstance(i, str)
-                or not (i.startswith("/uploads/") or i.startswith("/static/images/"))
+                or not (
+                    i.startswith("/static/images/")
+                    or (not remote_photos and i.startswith("/uploads/"))
+                    or (remote_photos and remote_photos.valid_url(i))
+                )
                 or ".." in i
                 for i in images
             )
@@ -360,7 +406,7 @@ def create_app(config=None):
                         "Release reservations before removing or reducing this combination."
                     )
             db().execute(
-                "INSERT INTO products VALUES(?,?,?,?,?,?,?,?,0) ON CONFLICT(id) DO UPDATE SET name=excluded.name,category=excluded.category,price=excluded.price,description=excluded.description,images=excluded.images,variants=excluded.variants,published=excluded.published",
+                f"INSERT INTO products({PRODUCT_COLUMNS}) VALUES(?,?,?,?,?,?,?,?,0) ON CONFLICT(id) DO UPDATE SET name=excluded.name,category=excluded.category,price=excluded.price,description=excluded.description,images=excluded.images,variants=excluded.variants,published=excluded.published",
                 (
                     pid,
                     name,
@@ -390,13 +436,21 @@ def create_app(config=None):
             im = ImageOps.exif_transpose(im).convert("RGB")
             im.thumbnail((1600, 1600))
             name = secrets.token_hex(16) + ".webp"
-            im.save(data / "uploads" / name, "WEBP", quality=84)
+            if remote_photos:
+                output = io.BytesIO()
+                im.save(output, "WEBP", quality=84)
+                url = remote_photos.upload(name, output.getvalue())
+            else:
+                im.save(data / "uploads" / name, "WEBP", quality=84)
+                url = "/uploads/" + name
         except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
             raise ValueError("Choose a valid JPG, PNG or WebP photo.")
-        return jsonify(url="/uploads/" + name)
+        return jsonify(url=url)
 
     @app.get("/uploads/<path:name>")
     def uploaded(name):
+        if remote_photos:
+            return fail("Photo not found.", 404)
         return send_from_directory(data / "uploads", name)
 
     @app.post("/api/checkout")
@@ -776,7 +830,7 @@ if __name__ == "__main__":
             raise SystemExit("Use at least 12 characters.")
         with app.app_context():
             app.db().execute(
-                "INSERT OR REPLACE INTO owner VALUES(1,?,?)",
+                "INSERT INTO owner(id,username,password) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET username=excluded.username,password=excluded.password",
                 (args.username, generate_password_hash(password)),
             )
             app.db().commit()
@@ -857,7 +911,7 @@ if __name__ == "__main__":
                         {"id": pid + "-3", "size": "38", "colour": "Brown", "stock": 5},
                     ]
                 app.db().execute(
-                    "INSERT OR IGNORE INTO products VALUES(?,?,?,?,?,?,?,?,1)",
+                    f"INSERT OR IGNORE INTO products({PRODUCT_COLUMNS}) VALUES(?,?,?,?,?,?,?,?,1)",
                     (
                         pid,
                         name,
