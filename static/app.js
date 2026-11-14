@@ -17,6 +17,8 @@ const icons = {
     '<path d="M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6l-9-4Z"/><path d="m8 12 3 3 5-6"/>',
   spark: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  eye: '<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/>',
+  eyeOff: '<path d="m3 3 18 18M10 6.2A12 12 0 0 1 12 6c6.5 0 10 6 10 6a15 15 0 0 1-3.1 3.3M6.2 7.8A16 16 0 0 0 2 12s3.5 6 10 6a11 11 0 0 0 4-.7"/>',
   copy: '<rect x="8" y="8" width="12" height="13" rx="1"/><path d="M16 8V3H3v13h5"/>',
 };
 const icon = (n) =>
@@ -120,6 +122,15 @@ function go(url) {
   render();
 }
 document.addEventListener("click", (e) => {
+  const toggle = e.target.closest(".password-toggle");
+  if (toggle) {
+    const input = document.getElementById(toggle.getAttribute("aria-controls"));
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    toggle.setAttribute("aria-label", `${show ? "Hide" : "Show"} ${toggle.dataset.fieldLabel}`);
+    toggle.innerHTML = icon(show ? "eyeOff" : "eye");
+    return;
+  }
   let a = e.target.closest("a[data-link]");
   if (a && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
@@ -463,13 +474,19 @@ function bindTeam() {
   $$("[data-staff-reset]").forEach(b => b.onclick = () => invitation({action:"reset", id:b.dataset.staffReset}, b));
   $$("[data-staff-revoke]").forEach(b => b.onclick = async () => { b.disabled = true; try { await api("staff", {action:"revoke", id:b.dataset.staffRevoke}); await render(); toast("Access revoked."); } catch (err) { toast(err.message); b.disabled = false; } });
 }
+function passwordField(label, name, autocomplete) {
+  const id = `admin-${name}`;
+  const lengthLimits = autocomplete === "new-password" ? ' minlength="12" maxlength="200"' : "";
+  const fieldLabel = name === "confirm" ? "password confirmation" : label.toLowerCase();
+  return `<div class="field"><label for="${id}">${label}</label><div class="password-input"><input id="${id}" name="${name}" type="password" autocomplete="${autocomplete}"${lengthLimits} required><button type="button" class="password-toggle" aria-controls="${id}" aria-label="Show ${fieldLabel}" data-field-label="${fieldLabel}">${icon("eye")}</button></div></div>`;
+}
 async function ownerSetupView() {
   const token = location.hash.slice(1);
   history.replaceState({}, "", "/admin/owner-setup");
   const base = `<h1>Welcome to your boutique</h1><p>Set your private Super Admin password to manage your products, orders and team.</p>`;
   try {
     const info = await api("owner-invitation", {token});
-    $("#app").innerHTML = shell(`<form class="login panel" id="owner-setup">${base}<p>Your username: <strong>${esc(info.username)}</strong></p><p>Save your username and password somewhere private.</p><div id="owner-setup-error" role="alert"></div><label class="field">New password<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><label class="field">Confirm password<input name="confirm" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="btn">Set up my account</button></form>`);
+    $("#app").innerHTML = shell(`<form class="login panel" id="owner-setup">${base}<p>Your username: <strong>${esc(info.username)}</strong></p><p>Save your username and password somewhere private.</p><div id="owner-setup-error" role="alert"></div>${passwordField("New password", "password", "new-password")}${passwordField("Confirm password", "confirm", "new-password")}<button class="btn">Set up my account</button></form>`);
     $("#owner-setup").onsubmit = async e => {
       e.preventDefault(); const button = e.submitter; button.disabled = true;
       const values = Object.fromEntries(new FormData(e.target));
@@ -490,7 +507,7 @@ async function ownerSetupView() {
 function activationView() {
   const token = location.hash.slice(1);
   history.replaceState({}, "", "/admin/activate");
-  $("#app").innerHTML = shell(`<form class="login panel" id="activate-staff"><h1>Join the boutique team</h1><p>Your invitation gives you Product Admin access. Choose your own password, then sign in with the username your Super Admin assigned.</p><div id="activation-error" role="alert"></div><label class="field">New password<input name="password" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><label class="field">Confirm password<input name="confirm" type="password" minlength="12" maxlength="200" autocomplete="new-password" required></label><button class="btn">Activate account</button></form>`);
+  $("#app").innerHTML = shell(`<form class="login panel" id="activate-staff"><h1>Join the boutique team</h1><p>Your invitation gives you Product Admin access. Choose your own password, then sign in with the username your Super Admin assigned.</p><div id="activation-error" role="alert"></div>${passwordField("New password", "password", "new-password")}${passwordField("Confirm password", "confirm", "new-password")}<button class="btn">Activate account</button></form>`);
   $("#activate-staff").onsubmit = async e => {
     e.preventDefault(); const b = e.submitter; b.disabled = true;
     const data = Object.fromEntries(new FormData(e.target));
@@ -514,7 +531,7 @@ function adminShell(body, tab) {
 }
 function login() {
   return shell(
-    `<form class="login panel" id="login"><span class="eyebrow">PRIVATE TEAM ACCESS</span><h1>Welcome back.</h1><p class="muted">Sign in to care for your boutique.</p><div id="login-error"></div><label class="field">Username<input name="username" autocomplete="username" required></label><label class="field">Password<input type="password" name="password" autocomplete="current-password" required></label><button class="btn full">Sign in securely ${icon("arrow")}</button><p class="tiny">Invitation-only access. Product Admins: ask your Super Admin for a password reset link. Store owner: contact your website administrator for account recovery.</p></form>`,
+    `<form class="login panel" id="login"><span class="eyebrow">PRIVATE TEAM ACCESS</span><h1>Welcome back.</h1><p class="muted">Sign in to care for your boutique.</p><div id="login-error"></div><label class="field">Username<input name="username" autocomplete="username" required></label>${passwordField("Password", "password", "current-password")}<button class="btn full">Sign in securely ${icon("arrow")}</button><p class="tiny">Invitation-only access. Product Admins: ask your Super Admin for a password reset link. Store owner: contact your website administrator for account recovery.</p></form>`,
     "admin",
   );
 }

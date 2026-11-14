@@ -617,6 +617,32 @@ svg {
   margin-top: 25px;
   padding-top: 24px;
 }
+.password-input {
+  display: flex;
+  position: relative;
+}
+.password-input input {
+  width: 100%;
+  min-height: 46px;
+  padding-right: 52px;
+}
+.password-toggle {
+  position: absolute;
+  inset: 1px 1px 1px auto;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--ivory);
+  color: var(--plum);
+  cursor: pointer;
+}
+.password-toggle svg {
+  width: 20px;
+  height: 20px;
+}
 .field {
   display: flex;
   flex-direction: column;
